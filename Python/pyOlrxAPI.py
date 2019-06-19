@@ -1,11 +1,58 @@
 ﻿""" Python wrapper for ASPEN OlrxAPI 
+
+    The following API functions are available in this version
+
+    OlrxAPIBoundaryEquivalent
+    OlrxAPIComputeRelayTime
+    OlrxAPIDeleteEquipment
+    OlrxAPIDoBreakerRating
+    OlrxAPIDoFault
+    OlrxAPIDoSteppedEvent
+    OlrxAPIEquipmentType
+    OlrxAPIErrorString
+    OlrxAPIFaultDescription
+    OlrxAPIFindBus
+    OlrxAPIFindBusByName
+    OlrxAPIFindBusNo
+    OlrxAPIFindEquipmentByTag
+    OlrxAPIFullBranchName
+    OlrxAPIFullBusName
+    OlrxAPIFullRelayName
+    OlrxAPIGetBusEquipment
+    OlrxAPIGetData
+    OlrxAPIGetEquipment
+    OlrxAPIGetLogicScheme
+    OlrxAPIGetObjJournalRecord
+    OlrxAPIGetObjMemo
+    OlrxAPIGetObjTags
+    OlrxAPIGetPSCVoltage
+    OlrxAPIGetRelay
+    OlrxAPIGetRelayTime
+    OlrxAPIGetSCCurrent
+    OlrxAPIGetSCVoltage
+    OlrxAPIGetSteppedEvent
+    OlrxAPILoadDataFile
+    OlrxAPIMakeOutageList
+    OlrxAPINextBusByName
+    OlrxAPINextBusByNumber
+    OlrxAPIPickFault
+    OlrxAPIPostData
+    OlrxAPIPrintObj1LPF
+    OlrxAPIReadChangeFile
+    OlrxAPIRun1LPFCommand
+    OlrxAPISaveDataFile
+    OlrxAPISetData
+    OlrxAPISetObjMemo
+    OlrxAPISetObjTags
+    OlrxAPIVersionInfo
+
 """
-__author__ = "ASPEN Inc."
-__copyright__ = "Copyright 2017, Advanced System for Power Engineering Inc."
+__author__ = "ASPEN"
+__copyright__ = "Copyright 2019, Advanced System for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "0.1.1"
+__version__ = "15.1.0"
 __email__ = "support@aspeninc.com"
-__status__ = "In development"
+__status__ = "Experimental"
 
 from ctypes import *
 import os.path
@@ -73,6 +120,18 @@ def OlrxAPIBuildNumber():
     vData = buf.value.split(" ")
     return int(vData[4])
 
+def OlrxAPISaveDataFile(filePath):
+    """Save ASPEN OLR data file to disk
+
+    Args:
+        filePath (c_char_p) : Full path name of ASPEN OLR file.
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPISaveDataFile.argtypes = [c_char_p]
+    return ASPENOlrx.OlrxAPISaveDataFile(filePath)
 
 def OlrxAPILoadDataFile(filePath,readonly):
     """Read ASPEN OLR data file from disk
@@ -88,11 +147,26 @@ def OlrxAPILoadDataFile(filePath,readonly):
     ASPENOlrx.OlrxAPILoadDataFile.argtypes = [c_char_p,c_int]
     return ASPENOlrx.OlrxAPILoadDataFile(filePath,readonly)
 
+def OlrxAPIReadChangeFile(filePath):
+    """Read ASPEN CHF file from disk
+
+    Args:
+        filePath (c_char_p) : Full path name of ASPEN OLR file.
+        flag (c_int): Change file processing flag: 1-true; 0-false
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+        1xxx           : Change file applied with xxx warnings
+    """
+    ASPENOlrx.OlrxAPIReadChangeFile.argtypes = [c_char_p]
+    return ASPENOlrx.OlrxAPIReadChangeFile(filePath)
+
 def OlrxAPIGetEquipment(type, p_hnd):
     """Retrieves handle of the next equipment of given type in the system.
      
     This function will return the handle of all the objectsof the given type,
-    one by one, in the order they are stored in the OLR fileD
+    one by one, in the order they are stored in the OLR file
 
     Set hnd to 0 to retrieve the first object
 
@@ -137,6 +211,53 @@ def OlrxAPIGetData(hnd, token, dataBuf):
     """
     ASPENOlrx.OlrxAPIGetData.argtypes = [c_int,c_int,c_void_p]
     return ASPENOlrx.OlrxAPIGetData(hnd, token, dataBuf)
+
+def OlrxAPIFindBus(name, kv):
+    """Find handle of bus with given name and kv
+
+    Args:
+        name (c_char_p):    Bus name
+        kv (c_double):      Bus nominal kv
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        hnd     : bus handle
+    """
+    ASPENOlrx.OlrxAPIFindBus.argtypes = [c_char_p,c_double]
+    return ASPENOlrx.OlrxAPIFindBus(name, kv)
+
+def OlrxAPIFindEquipmentByTag(tags, devType, hnd):
+    """Find handle of object of devType that has 
+       the given tags
+
+    Args:
+        tags (c_char_p): Tag string
+        tags (c_int):    Object type: TC_BUS, TC_LOAD, TC_SHUNT, TC_GEN , TC_SVD, 
+                         TC_LINE, TC_XFMR, TC_XFMR3, TC_PS, TC_SCAP, TC_MU,   
+                         TC_RLYGROUP, TC_RLYOCG, TC_RLYOCP, TC_RLYDSG, TC_RLYDSP, 
+                         TC_FUSE,   TC_SWITCH, TC_RECLSRP, TC_RECLSRG or zero.
+        hnd (POINTER(c_int)):  Object handle
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    Remarks: To get the first object in the list, call this function with *hnd equal 0.
+             Call this function with devType equal 0 to search all object types.
+    """
+    ASPENOlrx.OlrxAPIFindEquipmentByTag.argtypes = [c_char_p,c_int,POINTER(c_int)]
+    return ASPENOlrx.OlrxAPIFindEquipmentByTag(tags, devType, hnd)
+
+def OlrxAPIFindBusNo(no):
+    """Find handle of bus with given number.
+
+    Args:
+        no (c_int):    Bus number (must non zero)
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        hnd     : bus handle
+    """
+    ASPENOlrx.OlrxAPIFindBusNo.argtypes = [c_int]
+    return ASPENOlrx.OlrxAPIFindBusNo(no)
 
 def OlrxAPISetData(hnd, token, p_data):
     """Assign a value to an object data field
@@ -202,6 +323,39 @@ def OlrxAPIPostData(hnd):
     ASPENOlrx.OlrxAPIPostData.argtypes = [c_int]
     return ASPENOlrx.OlrxAPIPostData(hnd)
 
+def OlrxAPIDeleteEquipment(hnd):
+    """Delete network object.
+
+    Args:
+        hnd (c_int): Object handle
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIDeleteEquipment.argtypes = [c_int]
+    return ASPENOlrx.OlrxAPIDeleteEquipment(hnd)
+
+def OlrxAPIGetPSCVoltage( hnd, vdOut1, vdOut2, style ):
+    """Retrieves pre-fault voltage of a bus, or of connected buses of 
+    a line, transformer, switch or phase shifter.
+
+    Args:
+        hnd	(c_int): object handle
+        vdOut1 (c_double*3): voltage result, real part or magnitude, 
+                             at equipment terminals
+        vdOut2 (c_double*3): voltage result, imaginary part or angle in degree
+                             at equipment terminals
+        style (c_int)     : voltage result style
+                             1: output voltage in kV
+                             2: output voltage in per-unit
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIGetPSCVoltage.argtypes = [c_int, c_double*3, c_double*3, c_int]
+    return ASPENOlrx.OlrxAPIGetPSCVoltage( hnd, vdOut1, vdOut2, style )
+
 def OlrxAPIGetSCVoltage( hnd, vdOut1, vdOut2, style ):
     """Retrieves post-fault voltage of a bus, or of connected buses of 
     a line, transformer, switch or phase shifter.
@@ -217,7 +371,6 @@ def OlrxAPIGetSCVoltage( hnd, vdOut1, vdOut2, style ):
                                 2: output 012 sequence voltage in polar form
                                 2: output ABC phase voltage in rectangular form
                                 4: output ABC phase voltage in polar form
-
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
@@ -267,22 +420,44 @@ def OlrxAPIGetRelay( hndRlyGroup, hndRelay ):
     ASPENOlrx.OlrxAPIGetRelay.argtypes = [c_int, c_void_p]
     return ASPENOlrx.OlrxAPIGetRelay( hndRlyGroup, hndRelay );
 
-def OlrxAPIGetRelayTime( hndRelay, mult, trip ):
+def OlrxAPIGetLogicScheme( hndRlyGroup, hndScheme ):
+    """Retrieve handle of the next logic scheme object in a relay group.
+
+    Set hndScheme=0 to get the first scheme.
+
+    Args:
+        hndRlyGroup (c_int): Relay group handle
+        hndScheme (byref(c_int)): Logic scheme handle
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIGetLogicScheme.argtypes = [c_int, c_void_p]
+    return ASPENOlrx.OlrxAPIGetLogicScheme( hndRlyGroup, hndScheme );
+
+def OlrxAPIGetRelayTime( hndRelay, mult, ignore_signalonly, trip, device ):
     """Return operating time for a fuse, an overcurrent relay 
     (phase or ground), or a distance relay (phase or ground)
     in fault simulation result.
     
     Args:
-        hndRelay (c_int): relay object handle
-        mult (c_double) : relay current multiplying factor
-        trip (byref(c_double)) : relay operating time in seconds
-
+        hndRelay (c_int): [in] relay object handle
+        mult (c_double) : [in] relay current multiplying factor
+        ignore_signalonly: [in] Consider relay element signal-only flag 
+                           1 - Yes; 0 - No
+        trip (byref(c_double)) : [out] relay operating time in seconds
+        device (c_char_p): [out] relay operation code:
+                           NOP  No operation
+                           ZGn  Ground distance zone n  tripped
+                           ZPn  Phase distance zone n  tripped
+                           Ix   Overcurrent relay operating quantity: Ia, Ib, Ic, Io, I2, 3Io, 3I2
+                           TOC  Time overcurrent element tripped
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
     """
-    ASPENOlrx.OlrxAPIGetRelayTime.argtypes = [c_int, c_double, c_void_p]
-    return ASPENOlrx.OlrxAPIGetRelayTime( hndRelay, mult, trip )
+    ASPENOlrx.OlrxAPIGetRelayTime.argtypes = [c_int, c_double, c_void_p, c_char_p, c_int]
+    return ASPENOlrx.OlrxAPIGetRelayTime( hndRelay, mult, trip, device, ignore_signalonly )
 
 def OlrxAPIRun1LPFCommand(Params):
     """Run OneLiner command
@@ -292,26 +467,130 @@ def OlrxAPIRun1LPFCommand(Params):
                         - Node name: OneLiner command
                         - Node attributes: required command parameters
 
-            Command: CHECKPRIBACKCOORD  
+            Command: ARCFLASHCALCULATOR - Faults | Arc-flash hazard calculator
             Attributes:
                 REPORTPATHNAME	(*) Full pathname of report file.
+                APPENDREPORT            [0] Append to existing report 0-No;1-Yes
                 OUTFILETYPE 	[2] Output file type 1- TXT; 2- CSV
+                SELECTEDOBJ	Arcflash bus. Must  have one of following values
+                           "PICKED " 	the highlighted bus on the 1-line diagram
+                           "'BNAME1                ,KV1;’BNAME2’,KV2;..."  Bus name and nominal kV.
+                TIERS	[0] Number of tiers around selected object. This attribute is ignored if SELECTEDOBJ is not found.
+                AREAS	[0-9999] Comma delimited list of area numbers and ranges to check relaygroups agains backup. 
+                               This attribute is ignored if SELECTEDOBJ is found.
+                ZONES	[0-9999] Comma delimited list of zone numbers and ranges to check relaygroups agains backup. 
+                            This attribute is ignored if AREAS or SELECTEDOBJ are found.
+                KVS	[0-999] Comma delimited list of KV levels and ranges to check relaygroups agains backup. 
+                            This attribute is ignored if SELECTEDOBJ is found.
+                TAGS	Comma delimited list of bus tags. This attribute is ignored if SELECTEDOBJ is found.
+                EQUIPMENTCAT	(*) Equipment category: 0-Switch gear; 1- Cable; 2- Open air; 3- MCC                s and panelboards 1kV or lower
+                GROUNDED	(*) Is the equipment grounded 0-No; 1-Yes
+                ENCLOSED	(*) Is the equipment inside enclosure 0-No; 1-Yes
+                CONDUCTORGAP	(*) Conductor gap in mm
+                WORKDIST	(*) Working distance in inches
+                ARCDURATION	Arc duration calculation method. Must have one of following values:
+                          "FIXED" 	Use fixed duration
+                          "FUSE " 	Use fuse curve
+                          "FASTEST" 	Use fastest trip time of device in vicinity
+                          "DEVICE" 	Use trip time of specified device
+                          "SEA" 	Use stepped-event analysis
+                ARCTIME	Arc duration in second. Must be present when ARCDURATION="FIXED"
+                FUSECURVE	Fuse curve for arc duration calculation. Must be present when ARCDURATION=" FUSECURVE"
+                BRKINTTIME	Breaker interrupting time in cycle. Must be present when ARCDURATION=" FASTEST" and "DEVICE"
+                DEVICETIERS	[1] Number of tiers. Must be present when ARCDURATION=" FASTEST" and ="SEA"
+                DEVICE	String  with location of the relaygroup and the relay name 
+                         "BNO1;                BNAME1                ;KV1;BNO2;                BNAME2                ;KV2;                CKT                ;BTYP; RELAY_ID; ". 
+                         Format description of these fields are is in OneLiner help section 10.2.
+                ARCTIMELIMIT	[1] Perform no energy calculation when arc duration time is longer than 2 seconds
+
+            Command: BUSFAULTSUMMARY : Faults | Bus fault summary
+            Attributes:
+               REPORTPATHNAME= (*) full valid path to report file
+               BASELINECASE= pathname of base-line bus fault summary report in CSV format
+               === Only when BASELINECASE is specified
+               DIFFBASE= Basis for computing current deviation: [MAX3PH1LG] or MAXPHGND
+               FLAGPCNT= [15] Current deviation percent threshold.
+               === Only when BASELINECASE is not specified
+               BUSLIST= Bus list, one on each row in format 'BusName',kV
+               BUSNOLIST= Bus number list, coma delimited. 
+                          This attribute is ignored when BUSLIST is specified
+               === Only when no BUSLIST and BUSNOLIST is  specified
+               XGND= Fault reactance X
+               RGND= Fault resistance R
+               NOTAP= Exclude tap buses: [1]-TRUE; 0-FALSE
+               PERUNITV= Report voltage in PU
+               PERUNIT= Report current in PU
+               AREAS= Area number range
+               ZONES= Zone number range. This attribute is ignored when AREAS is specified
+               BUSNOS= Additional bus number range
+               KVS= Additional bus kV range
+               TAGS= Additional tag filter
+               TIERS= check lines in vicinity within this tier number
+               AREAS= Check all lines in area range
+               ZONES= Check all lines in zone range
+               KVS=   Additional KV filter
+
+            Command: CHECKRELAYOPERATIONPRC023 - Check | Relay loadability
+            Attributes:
+               REPORTPATHNAME= (*) full valid pathname of report file
+               REPORTCOMMENT= Report comment string. 255 char or shorter
+               SELECTEDOBJ=
+                    PICKED Check devices in selected relaygroup
+                    BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;  location string of branch to check(OneLiner Help section 10.2)
+               TIERS= check relaygroups in vicinity within this tier number
+               AREAS= Check all relaygroups in area range
+               ZONES= Check all relaygroups in zone range
+               KVS=   Additional KV filter
+               TAGS=  Additional tag filter
+               USETAGFLAG= [0]-AND;[1]-OR
+               DEVICETYPE= [OCP DSP] Devide type to check. Space delimited
+               APPENDREPORT=	Append report file: 0-False; [1]-True
+               LINERATINGTYPE=	[3] Line rating to use: 0-first; 1-second; 2-Third;	3-Fourth
+               XFMRRATINGTYPE=	[2] Transformer rating to use: 0-MVA1; 1-MVA2; 2-MVA3
+               FWRLOADLONLY= [0] Consider load in forward direction only
+               VOLTAGEPU= [0.85] Per unit voltage
+               LINECURRMULT= [1.5] Line load current multiplier
+               XFMRCURRMULT= [1.5] Transformer load current multiplier
+               PFANGLE= [30] Power factor angle
+
+            Command: CHECKRELAYOPERATIONPRC026 - run Check | Relay performance in stable power swing (PRC-026-1)
+            Attributes:
+               REPORTPATHNAME= (*) full valid pathname of report file
+               REPORTCOMMENT= Report comment string. 255 char or shorter
+               SELECTEDOBJ=
+                    PICKED Check devices in selected relaygroup
+                    BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;  location string of line to check(Help section 10.2)
+               TIERS= check relaygroups in vicinity within this tier number
+               AREAS= Check all relaygroups in area range
+               ZONES= Check all relaygroups in zone range
+               KVS=   Additional KV filter
+               TAGS=  Additional tag filter
+               DEVICETYPE= [OCP DSP] Devide type to check. Space delimited
+               APPENDREPORT=	Append report file: 0-False; [1]-True
+               SEPARATIONANGLE=	[120] System separation angle for stable power swing calculation
+               DELAYLIMIT= [15] Report violation if relay trips faster than this limit (in cycles)
+               CURRMULT= [1.0] Current multiplier to apply in relay trip checking
+
+            Command: CHECKPRIBACKCOORD - Check | Primary/back relay coordination
+            Attributes:
+                REPORTPATHNAME  (*) Full pathname of report file.
+                OUTFILETYPE     [2] Output file type 1- TXT; 2- CSV
                 SELECTEDOBJ	Relay group to check against its backup. Must  have one of following values
-                “PICKED “ 	the highlighted relaygroup on the 1-line diagram
-                “BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;”  location string of the relaygroup. Format description is in OneLiner help section 10.2.
+                PICKED      the highlighted relaygroup on the 1-line diagram
+                "BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;"  location string of the relaygroup. Format description is in OneLiner help section 10.2.
                 TIERS	[0] Number of tiers around selected object. This attribute is ignored if SELECTEDOBJ is not found.
                 AREAS	[0-9999] Comma delimited list of area numbers and ranges to check relaygroups agains backup.
                 ZONES	[0-9999] Comma delimited list of zone numbers and ranges to check relaygroups agains backup. This attribute is ignored if AREAS is found.
                 KVS	0-999] Comma delimited list of KV levels and ranges to check relaygroups agains backup. This attribute is ignored if SELECTEDOBJ is found.
                 TAGS	Comma delimited list of tags to check relaygroups agains backup. This attribute is ignored if SELECTEDOBJ is found.
                 COORDTYPE	Coordination type to check. Must  have one of following values
-                “0”	OC backup/OC primary (Classical)
-                “1”	OC backup/OC primary (Multi-point)
-                “2”	DS backup/OC primary
-                “3”	OC backup/DS primary
-                “4”	DS backup/DS primary
-                “5”	OC backup/Recloser primary
-                “6”	All types/All types
+                "0"	OC backup/OC primary (Classical)
+                "1"	OC backup/OC primary (Multi-point)
+                "2"	DS backup/OC primary
+                "3"	OC backup/DS primary
+                "4"	DS backup/DS primary
+                "5"	OC backup/Recloser primary
+                "6"	All types/All types
                 LINEPERCENT	Percent interval for sliding intermediate faults. This attribute is ignored if COORDTYPE is 0 or 5.
                 RUNINTERMEOP	1-true; 0-false. Check  intermediate faults with end-opened. This attribute is ignored if COORDTYPE is 0 or 5.
                 RUNCLOSEIN	1-true; 0-false. Check close-in fault. This attribute is ignored if COORDTYPE is 0 or 5.
@@ -333,13 +612,13 @@ def OlrxAPIRun1LPFCommand(Params):
                 OUTAGE2XFMRS	Run double and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEXFMRS =0
                 OUTAGE3SOURCES	Outage only  3 strongest sources: 0-False; 1-True. Ignored if OUTAGEMULINES=0 and OUTAGEXFMRS =0
 
-            Command: CHECKRELAYOPERATIONSEA   
+            Command: CHECKRELAYOPERATIONSEA - Check | Relay operation using stepped-events
             Attributes:
                 REPORTPATHNAME	(*) Full pathname of folder for report files.
                 REPORTCOMMENT		Additional comment string to include in all checking report files
                 SELECTEDOBJ	Check line with selected relaygroup. Must  have one of following values
-                “PICKED “ 	the highlighted relaygroup on the 1-line diagram
-                “BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;”  location string of  the relaygroup. Format description is in OneLiner help section 10.2.
+                "PICKED " 	the highlighted relaygroup on the 1-line diagram
+                "BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;"  location string of  the relaygroup. Format description is in OneLiner help section 10.2.
                 TIERS	[0] Number of tiers around selected object. This attribute is ignored if SELECTEDOBJ is not found.
                 AREAS	[0-9999] Comma delimited list of area numbers and ranges.
                 ZONES	[0-9999] Comma delimited list of zone numbers and ranges. This attribute is ignored if AREAS is found.
@@ -356,7 +635,7 @@ def OlrxAPIRun1LPFCommand(Params):
                 OUTAGE2XFMRS	Run double and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEXFMRS =0
                 OUTAGE3SOURCES	Outage only  3 strongest sources: 0-False; 1-True. Ignored if OUTAGEMULINES=0 and OUTAGEXFMRS =0
 
-            Command: SETGENREFANGLE    
+            Command: SETGENREFANGLE - Network | Set generator reference angle   
             Attributes:
                 REPORTPATHNAME	Full pathname of folder for report files.
                 REFERENCEGEN	Bus name and kV of reference generator in format: 'BNAME', KV.
@@ -365,8 +644,82 @@ def OlrxAPIRun1LPFCommand(Params):
                 SKIP   	Leave unchanged. This option will be in effect automatically when old reference is not valid
                 ASGEN  	Use angle computed for regular generator
 
-            Command: CHECKRELAYSETTINGS    
+            Command: CHECKRELAYSETTINGS - Check | Relay settings
             Attributes:
+               SELECTEDOBJ=
+                    PICKED Check line with selected relaygroup
+                    BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;  location string of line to check(Help section 10.2)
+               TIERS= check lines in vicinity within this tier number
+               AREAS= Check all lines in area range
+               ZONES= Check all lines in zone range
+               KVS=   Additional KV filter
+               TAGS=  Additional tag filter
+               REPORTPATHNAME= (*) full valid path to report folder with write access
+               REPORTCOMMENT= Report comment string. 255 char or shorter
+               FAULTTYPE= 1LG, 3LG. Fault type to check. Space delimited
+               DEVICETYPE= OCG, OCP, DSG, DSP, LOGIC, VOLTAGE, DIFF Devide type to check. Space delimited
+               OUTAGELINES	Run Line outage contingency: 0-False; 1-True
+               OUTAGEXFMRS	Run transformer outage contingency: 0-False; 1-True
+               OUTAGE3SOURCES= 1 or 0 Outage only 3 strongest sources
+               OUTAGEMULINES= 1 or 0 Outage mutually coupled lines
+               OUTAGEMULINESGND= 1 or 0 Outage and ground ends of mutually coupled lines
+               OUTAGE2LINES= 1 or 0 Double outage lines
+               OUTAGE1LINE1XFMR= 1 or 0 Double outage line and transformer
+               OUTAGE2XFMR= 1 or 0 Double outage transformers
+
+            Command: EXPORTNETWORK = File | Export network data
+            Attributes:
+               FORMAT     = Output format: [DXT]-ASPEN DXT; PSSE-PSS/E Raw and Seq 
+               SCOPE      =  Export scope: [0]-Entire network; 1-Area number; 2- Zone number
+               AREANO     =  Export area number
+               ZONENO	  =  Export zone number
+               INCLUDETIES=  Include ties: [0]-False; 1-True
+               ====DXT export only:
+               DXTPATHNAME= (*) full valid pathname of ouput DXT file
+               ====PSSE export only:
+               RAWPATHNAME= (*) full valid pathname of ouput RAW file
+               SEQPATHNAME= (*) full valid pathname of ouput SEQ file
+               PSSEVER	  =  [33] PSS/E version
+               X3MIDBUSNO =  [18000] First fictitious bus number for 3-w transformer mid point
+               NEWBUSNO   =  [15000] First bus number for buses with no bus number
+
+            Command EXPORTRELAY - Relay | Export relay
+            Attributes:
+               FORMAT     =  Output format: [RAT]-ASPEN RAT;
+               SCOPE      =  Export scope: [0]-Entire network; 1-Area number; 2- Zone number; 3-Invicinity of a bus
+               AREANO     =  Export area number (*required when SCOPE=1)
+               ZONENO	  =  Export zone number (*required when SCOPE=2)
+               SELECTEDOBJ=  Selected bus (*required when SCOPE=3). Must be a string with following content
+                             PICKED - Selected bus on the 1-line diagram
+                             'BusName' kV - Bus name in single quotes and kV separated by space
+               TIERS      =  [0] Number of tiers (ignored when SCOPE<>3)
+               DEVICETYPE =  Device type to export. Comma delimied list of the following:
+                             OC: Overcurrent
+                             DS: Distance
+                             RC: Recloser
+                             VR: Voltage relay
+                             DIFF: Differential relay
+                             SCHEME: Logic scheme
+                             COORDPAIR: Coorination pair
+                             [OC,DS,RC,VR,DIFF,COORDPAIR,SCHEME]
+               LASTCHANGEDDATE =  [01-01-1986] Cutoff last changed date
+               RATPATHNAME= (*) full valid pathname of ouput RAT file
+
+            Command: INSERTTAPBUS - Network | Bus | Insert tap bus
+            Attributes:
+               BUSNAME1=	(*) Line bus 1 name
+               BUSNAME2=	(*) Line bus 2 name
+               KV=	(*) Line kV
+               CKTID=	(*) Line circuit ID
+               PERCENT=	(*) Percent distance to tap from bus 1 (must be between 0-100)
+               TAPBUSNAME=	(*) Tap bus name
+
+            Command: SAVEDATAFILE - File | Save and File | Save as
+            Attributes:
+               PATHNAME     = Name or full pathname of new OLR file for File | Save as command. 
+                              If only file name is given, file will be saved in the folder 
+                              where the current OLR file is located.
+                              If no attribute is specified, the File | Save command will be executed.
 
     Returns:
         OLRXAPI_FAILURE: Failure
@@ -386,23 +739,23 @@ def OlrxAPIDoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
     Args: 	
         hnd (c_int): handle of a bus or a relay group.
         fltOpt (c_double*64): simulation options
-            fltOpt(1) – Fault connection code
+            fltOpt(1) - Fault connection code
                             1=3LG
                             2=2LG BC, 3=2LG CA, 4=2LG AB
                             5=1LG A, 5=1LG B, 6=1LG C
                             7=LL BC, 7=LL CA, 8=LL AB
-            fltOpt(2) – Intermediate percent between 0.01-99.99. 0 for a 
+            fltOpt(2) - Intermediate percent between 0.01-99.99. 0 for a 
                         close-in fault. This parameter is ignored if nDevHnd 
                         is a bus handle.
-            fltOpt(3) – Fault resistance, ohm 
-            fltOpt(4) – Fault reactance, ohm
-            fltOpt(4+1) – Zero or Fault connection code for additional user event 
-            fltOpt(4+2) – Time  of additional user event, seconds.
-            fltOpt(4+3) – Fault resistance in additional user event, ohm 
-            fltOpt(4+4) – Fault reactance in additional user event, ohm
-            fltOpt(4+5) – Zero or Fault connection code for additional user event 
-        …
-        runOpt (c_int*5): simulation options flags. 1 – set; 0 - reset
+            fltOpt(3) - Fault resistance, ohm 
+            fltOpt(4) - Fault reactance, ohm
+            fltOpt(4+1) - Zero or Fault connection code for additional user event 
+            fltOpt(4+2) - Time  of additional user event, seconds.
+            fltOpt(4+3) - Fault resistance in additional user event, ohm 
+            fltOpt(4+4) - Fault reactance in additional user event, ohm
+            fltOpt(4+5) - Zero or Fault connection code for additional user event 
+        ...
+        runOpt (c_int*5): simulation options flags. 1 - set; 0 - reset
             runOpt(1)  - Consider OCGnd operations
             runOpt(2)  - Consider OCPh operations
             runOpt(3)  - Consider DSGnd operations
@@ -440,17 +793,73 @@ def OlrxAPIGetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, fau
     OlrxAPIGetSteppedEvent.argstype = [c_int,c_void_p,c_void_p,c_void_p,c_char_p,c_char_p]
     return ASPENOlrx.OlrxAPIGetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest )
 
+def OlrxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
+                            ReportTXT, ReportCSV, ConfigFile) :
+    """Run breaker rating study
+
+    Args:
+        Scope -          [1]: 0-IEEE;1-IEC
+                         [2]: 0-All;1-Area;2-Zone;3-Selected
+                         [3]: Area or zone number
+                         ...: or list of bus hnd terminated with -1
+        Scope[1] – Breaker rating standard: 0-ANSI/IEEE; 1-IEC.
+        Scope[2] – Bus selection: 0-All buses; 1-in Area; 2-in Zone; 3- selected buses
+        Scope[3] – Selected area or zone number. 
+        Scope[4] or list of handle number of selected buses. The last element in the list 
+                     must be -1.
+        RatingThreshold [in] Percent rating threshold.
+        OutputOpt  [in] Rating output option: 
+                        0- Output only overduty cases; 
+                        1- Output all cases;
+                        OR Floating number S (0 < S < 1) - 
+                                 Check only breakers at buses where ratio 
+                                 “Bus fault current / Breaker rating” exceeds S.
+        OptionalReport  [in] Integer number flag. Enable various bits to enable 
+                        optional sections in rating report: Bit 1- Detailed fault 
+                        simulation result; Bit 2- Breaker name plate data; 
+                        Bit 3- List of connected equipment.
+        ReportTXT  [in] Full path name of text report file. Set to emty to omit text report.
+        ReportCSV  [in] Full path name of CSV report file. Set to emty to omit CSV report.
+        ConfigFile [in] Full path name of  breaker rating configuration file to apply in 
+                        this study. Set to emty to omit reading configuration file.
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIDoBreakerRating.argtypes = [POINTER(c_int),c_double,c_double,c_int,c_char_p,c_char_p,c_char_p]
+    return ASPENOlrx.OlrxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
+                            ReportTXT, ReportCSV, ConfigFile)
+def OlrxAPIBoundaryEquivalent(EquFileName, BusList, FltOpt) :
+    """Create boundary equivalent network
+
+    Args:
+        EquFileName [in] Path name of the boundary equivalent OLR file.
+
+        BusList   [in]   Array of handles of buses to be retained in the equivalent. 
+                         The list must be terminated with value -1
+
+        FltOpt    [in] study parameters
+                    FltOpt[1]  - Per-unit elimination threshold
+                    FltOpt[2]  - Keep existing equipment at retained buses( 1- set; 0- reset)
+                    FltOpt[3]  - Keep all existing annotations (1- set; 0-reset)
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIBoundaryEquivalent.argtypes = [c_char_p,POINTER(c_int),c_double*3]
+    return ASPENOlrx.OlrxAPIBoundaryEquivalent(EquFileName, BusList, FltOpt)
 def OlrxAPIDoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
     """Simulate one or more faults
 
     Args:
         hnd	(c_int): handle of a bus, branch or a relay group.
-        vnFltConn (c_int*4): fault connection flags. 1 – set; 0 - reset
-            vnFltConn[1] – 3PH 
-            vnFltConn[2] – 2LG 
-            vnFltConn[3] – 1LG 
-            vnFltConn[4] – LL 
-        fltOpt(c_double*15): fault options flags. 1 – set; 0 - reset
+        vnFltConn (c_int*4): fault connection flags. 1 - set; 0 - reset
+            vnFltConn[1] - 3PH 
+            vnFltConn[2] - 2LG 
+            vnFltConn[3] - 1LG 
+            vnFltConn[4] - LL 
+        fltOpt(c_double*15): fault options flags. 1 - set; 0 - reset
             vdFltOpt(1)  - Close-in
             vdFltOpt(2)  - Close-in w/ outage
             vdFltOpt(3)  - Close-in with end opened
@@ -465,16 +874,16 @@ def OlrxAPIDoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clear
             vdFltOpt(12) - Intermediate % with end opened w/ outage
             vdFltOpt(13) - Auto seq. Intermediate % from (*)
             vdFltOpt(14) - Auto seq. Intermediate % to (*)
-            vdFltOpt(15) – Outage line grounding admittance in mho (***).
+            vdFltOpt(15) - Outage line grounding admittance in mho (***).
         vnOutageLst (c_int*100): list of handles of branches to be outaged; 0 terminated
-        vnOutageOpt (c_int*4):  branch outage option flags. 1 – set; 0 - reset
+        vnOutageOpt (c_int*4):  branch outage option flags. 1 - set; 0 - reset
             vnOutageOpt(1) - one at a time
             vnOutageOpt(2) - two at a time
             vnOutageOpt(3) - all at once
-            vnOutageOpt(4) – breaker failure (**)
-        dFltR	[in] fault resistance, in Ohm
-        dFltX	[in] fault reactance, in Ohm
-        nClearPrev	[in] clear previous result flag. 1 – set; 0 - reset
+            vnOutageOpt(4) - breaker failure (**)
+        dFltR (c_double): fault resistance, in Ohm
+        dFltX (c_double)" fault reactance, in Ohm
+        nClearPrev (c_int): clear previous result flag. 1 - set; 0 - reset
 
     Remarks:
         (*)	To simulate a single intermediate fault without auto-sequencing, 
@@ -537,6 +946,22 @@ def OlrxAPIErrorString():
     ASPENOlrx.OlrxAPIErrorString.restype = c_char_p
     return ASPENOlrx.OlrxAPIErrorString()
 
+def OlrxAPIPrintObj1LPF(hnd):
+    """Return a text description of network database object 
+       (bus, generator, load, shunt, switched shunt, transmission line, 
+       transformer, switch, phase shifter, distance relay, 
+       overcurrent relay, fuse, recloser, relay group)
+
+    Args:
+        hnd (c_int): object handle
+
+    Returns:
+        string (c_char_p)
+    """
+    ASPENOlrx.OlrxAPIPrintObj1LPF.argstype = [c_int]
+    ASPENOlrx.OlrxAPIPrintObj1LPF.restype = c_char_p
+    return ASPENOlrx.OlrxAPIPrintObj1LPF(hnd)
+
 def OlrxAPIFullBusName(hnd):
     """Return string composed of name and kV of the given bus
 
@@ -576,3 +1001,152 @@ def OlrxAPIFullRelayName(hnd):
     ASPENOlrx.OlrxAPIFullRelayName.restype = c_char_p
     ASPENOlrx.OlrxAPIFullRelayName.argstype = [c_int]
     return ASPENOlrx.OlrxAPIFullRelayName(hnd)
+
+def OlrxAPIGetObjJournalRecord(hnd):
+    """Retrieve journal jounal record details of a data object in the OLR file.
+
+    Args:
+        hnd (c_int): object handle
+
+    Returns:
+        JRec (c_char_p): String of journal record fields, separated by new line character: 
+            -	Create date and time
+            -	Created by
+            -	Last modified date and time
+            -	Modified by
+
+    """
+    ASPENOlrx.OlrxAPIGetObjJournalRecord.argstype = [c_int]
+    ASPENOlrx.OlrxAPIGetObjJournalRecord.restype = c_char_p
+    return ASPENOlrx.OlrxAPIGetObjJournalRecord(hnd)
+
+def OlrxAPIGetObjTags(hnd):
+    """Retrieve tag string for a bus, generator, load, shunt, switched shunt, 
+       transmission line, transformer, switch, phase shifter, distance relay, 
+       overcurrent relay, fuse, recloser, relay group.
+
+    Args:
+        hnd (c_int): object handle
+
+    Returns:
+        tags (c_char_p): Tag string
+
+    Note: if the funtion fails to execute the return string will consist of 
+          error message that begins with the key words: "GetObjTags failure:..."
+    """
+    ASPENOlrx.OlrxAPIGetObjTags.argstype = [c_int]
+    ASPENOlrx.OlrxAPIGetObjTags.restype = c_char_p
+    return ASPENOlrx.OlrxAPIGetObjTags(hnd)
+
+def OlrxAPIGetObjMemo(hnd):
+    """Retrieve memo string for a bus, generator, load, shunt, switched shunt, 
+       transmission line, transformer, switch, phase shifter, distance relay, 
+       overcurrent relay, fuse, recloser, relay group.
+
+    Args:
+        hnd (c_int): object handle
+
+    Returns:
+        memo (c_char_p): Memo string
+
+    Remarks: if the funtion fails to execute the return string will consist of 
+          error message that begins with the key words: "GetObjTags failure:..."
+    """
+    ASPENOlrx.OlrxAPIGetObjMemo.argstype = [c_int]
+    ASPENOlrx.OlrxAPIGetObjMemo.restype = c_char_p
+    return ASPENOlrx.OlrxAPIGetObjMemo(hnd)
+
+def OlrxAPISetObjMemo(hnd,memo):
+    """Assign memo string for a bus, generator, load, shunt, switched shunt, 
+       transmission line, transformer, switch, phase shifter, distance relay, 
+       overcurrent relay, fuse, recloser, relay group.
+
+    Args:
+        hnd (c_int): object handle
+        memo (c_char_p): Memo string
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+
+    Remarks: Line breaks must be included in the memo string as escape 
+       charater \n
+    """
+    ASPENOlrx.OlrxAPISetObjMemo.argstype = [c_int,c_char_p]
+    ASPENOlrx.OlrxAPISetObjMemo.restype = c_int
+    return ASPENOlrx.OlrxAPISetObjMemo(hnd,memo)
+
+
+def OlrxAPISetObjTags(hnd,tags):
+    """Assign tag string for a bus, generator, load, shunt, switched shunt, 
+       transmission line, transformer, switch, phase shifter, distance relay, 
+       overcurrent relay, fuse, recloser, relay group.
+
+    Args:
+        hnd (c_int): object handle
+        tags (c_char_p): tag string
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+
+    Remarks: tags string must be terminated with ; character
+    """
+    ASPENOlrx.OlrxAPISetObjTags.argstype = [c_int,c_char_p]
+    ASPENOlrx.OlrxAPISetObjTags.restype = c_int
+    return ASPENOlrx.OlrxAPISetObjTags(hnd,tags)
+
+def OlrxAPIMakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
+    """Return list of neighboring branches that can be used as outage list 
+       in calling the DoFault function on a bus, branch or relay group.
+
+    Args:
+        hnd	(c_int): handle of a bus, branch or a relay group.
+        maxTiers (c_int): Number of tiers (must be positive) 
+        wantedTypes (c_int): Branch type to comsider. Sum of one or more 
+             following values: 1- Line; 2- 2-winding transformer;
+             4- Phase shifter; 8- 3-winding transformer; 16- Switch
+        branchList (c_void_p): [in] array of c_int*listLen+1 or none
+                               [out] zero-terminated list of branch handles.
+        listLen (pointer(c_int)): [in] pointer to c_int with length of branchList array
+                                  [out] Number of outage branches found.
+
+    Remarks:
+        Calling this function with None in place of branchList will let you determine the 
+        number of outage branches in the number of tiers specified.
+
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+
+    """
+    ASPENOlrx.OlrxAPIMakeOutageList.argtypes = [c_int,c_int,c_int,c_void_p,c_void_p]
+    return ASPENOlrx.OlrxAPIMakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen)
+
+def OlrxAPIComputeRelayTime(hnd, curMag, curAng, vMag, vAng,vpreMag, vpreAng, opTime, opDevice):
+    """Computes operating time for a fuse, recloser, an overcurrent relay (phase or ground), 
+       or a distance relay (phase or ground) at given currents and voltages.
+
+    Args:
+        hnd (c_int): relay object handle
+        curMag (c_double*5) [in] array of relay current magnitude in amperes of 
+                    phase A, B, C, and if applicable, Io currents in neutral 
+                    of transformer windings P and S.
+        curAng (c_double*5):  [in] array of relay current angles in degrees
+        vMag (c_double*3):    [in] array of relay voltage magnitude in, line to neutral, in kV
+                    of phase A, B and C
+        vdVAng (c_double*3): [in] array of relay voltage angle
+        vpreMag (c_double): [in] relay pre-fault positive sequence voltage magnitude in kV, line to neutral
+        dVpreAng (c_double): [in] relay pre-fault positive sequence voltage angle in degrees
+        opTime (pointer(c_double)): [out] relay operating time in seconds
+        opDevice (c_char*128): [out] relay operation code:
+                            NOP  No operation
+                            ZGn  Ground distance zone n  tripped
+                            ZPn  Phase distance zone n  tripped
+                            Ix    Overcurrent relay operating quantity: Ia, Ib, Ic, Io, I2, 3Io, 3I2
+    Returns:
+        OLRXAPI_FAILURE: Failure
+        OLRXAPI_OK     : Success
+    """
+    ASPENOlrx.OlrxAPIMakeOutageList.argtypes = [c_int,c_double*5,c_double*5,c_double*3,c_double*3,c_double,c_double,c_void_p,c_char*128]
+    return ASPENOlrx.OlrxAPIComputeRelayTime(hnd, curMag, curAng, vMag, vAng,vpreMag, vpreAng, opTime, opDevice)
