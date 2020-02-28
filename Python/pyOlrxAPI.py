@@ -107,7 +107,7 @@ def InitOlrxAPI(dllPath):
 def OlrxAPIVersion():
     """OlrxAPI engine version string in format version_major.version_minor
     """
-    buf = create_string_buffer(b'\000' * 128)
+    buf = create_string_buffer(b'\000' * 1024)
     ASPENOlrx.OlrxAPIVersionInfo(buf)
     vData = buf.value.split(" ")
     return vData[2]
@@ -115,7 +115,7 @@ def OlrxAPIVersion():
 def OlrxAPIBuildNumber():
     """OlrxAPI engine build number
     """
-    buf = create_string_buffer(b'\000' * 128)
+    buf = create_string_buffer(b'\000' * 1024)
     ASPENOlrx.OlrxAPIVersionInfo(buf)
     vData = buf.value.split(" ")
     return int(vData[4])
