@@ -94,20 +94,20 @@ def InitOlrxAPI(dllPath):
     ASPENOlrx = WinDLL((dllPath + "olrxapi.dll").encode('UTF-8'), use_last_error=True)
     if ASPENOlrx == None:
         raise OlrxAPIException("Failed to setup olrxapi.dll") 
-    errorAPIInit = "No Error"            # This string Must match the c++ DLL code
+    errorAPIInit = "OlrxAPI Init Error"
     try:
         # Attempt to get error string
         errorAPIInit = OlrxAPIErrorString()
     except:
         pass
-    if errorAPIInit <> "No Error":
+    if errorAPIInit <> "No Error":                # This string Must match the c++ DLL code
         raise OlrxAPIException(errorAPIInit) 
 
 # API function prototypes
 def OlrxAPIVersion():
     """OlrxAPI engine version string in format version_major.version_minor
     """
-    buf = create_string_buffer(b'\000' * 1024)
+    buf = create_string_buffer(b'\000' * 1028)
     ASPENOlrx.OlrxAPIVersionInfo(buf)
     vData = buf.value.split(" ")
     return vData[2]
@@ -115,7 +115,7 @@ def OlrxAPIVersion():
 def OlrxAPIBuildNumber():
     """OlrxAPI engine build number
     """
-    buf = create_string_buffer(b'\000' * 1024)
+    buf = create_string_buffer(b'\000' * 1028)
     ASPENOlrx.OlrxAPIVersionInfo(buf)
     vData = buf.value.split(" ")
     return int(vData[4])
