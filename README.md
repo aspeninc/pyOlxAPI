@@ -1,5 +1,5 @@
 # pyOlrxAPI
-ASPEN OlrxAPI Python scripts
+ASPEN OlxAPI Python apps for power system studies
 
 Getting started tutorial:
 
