@@ -799,7 +799,7 @@ def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
 
     Returns:
         OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        >0             : Index number of the last fault simulated by the function
     """
     ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent.argtypes = [c_char_p,POINTER(c_int),c_double*3]
     return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent(EquFileName, BusList, FltOpt)
@@ -849,7 +849,7 @@ def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
 
     Returns:
         OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        >0             : Index number of the last fault simulated by the function
     """
     ASPENOlxAPIDLL.OlxAPIDoFault.argtypes = [c_int,c_int*4,c_double*15,c_int*4,c_int*100,c_double,c_double,c_int]
     return ASPENOlxAPIDLL.OlxAPIDoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev)
