@@ -1,15 +1,23 @@
-﻿""" ASPEN OlrxAPI Constants
+﻿"""
+ASPEN OlrxAPI Constants
 """
 __author__ = "ASPEN Inc."
-__copyright__ = "Copyright 2018, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
 __license__ = "All rights reserved"
 __version__ = "1.1.1"
 __email__ = "support@aspeninc.com"
-__status__ = "Release"
+__status__ = "Experimental"
 
+# olxapi.dll folder pathname
+OLXAPI_DLL_PATH    = "C:\\Program Files (x86)\\ASPEN\\1LPFv15\\"               
 
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.add_argument('-fi', metavar='', help = 'OLR input file (default =...\SAMPLE30.OLR)'   , type=str ,default = OLXAPI_DLL_PATH+"SAMPLE30.OLR")
+PARSER_INPUTS.add_argument('-ut', metavar='', help = '0/1/2 0(default):run, 1:unit test, 2:quality test', type=int ,default = 0)
+#
 TC_NOTHING = 0
-TC_BUS = 1 
+TC_BUS = 1
 TC_LOAD = 2
 TC_LOADUNIT = 3
 TC_SHUNT = 4

@@ -26,12 +26,12 @@ ASPENOlxAPIDLL = None    #
 def InitOlxAPI(dllPath):
     """Initialize OlxAPI session.
 
-    Successfull initialization is required before any 
+    Successfull initialization is required before any
     other OlxAPI call can be executed.
 
     Args:
         dllPath (string): Full path name with \\ as last character of
-                ASPEN program folder where OlxAPI.dll and related 
+                ASPEN program folder where OlxAPI.dll and related
                 program components are located
 
     Returns:
@@ -40,22 +40,27 @@ def InitOlxAPI(dllPath):
     Raises:
         OlxAPIException
     """
+    global ASPENOlxAPIDLL
+    if ASPENOlxAPIDLL != None:
+        return
     # get the module handle and create a ctypes library object
     if not os.path.isfile(dllPath + "olxapi.dll") :
-        raise OlxAPIException("Failed to locate: " + dllPath + "olxapi.dll") 
+        raise OlxAPIException("Failed to locate: " + dllPath + "olxapi.dll")
     os.environ['PATH'] = os.path.abspath(dllPath) + ";" + os.environ['PATH']
-    global ASPENOlxAPIDLL
-    ASPENOlxAPIDLL = WinDLL((dllPath + "olxapi.dll").encode('UTF-8'), use_last_error=True)
+    #
+    ASPENOlxAPIDLL = WinDLL(dllPath + "olxapi.dll", use_last_error=True)
     if ASPENOlxAPIDLL == None:
-        raise OlxAPIException("Failed to setup olxapi.dll") 
+        raise OlxAPIException("Failed to setup olxapi.dll")
     errorAPIInit = "OlxAPI Init Error"
     try:
         # Attempt to get error string
         errorAPIInit = ErrorString()
     except:
         pass
-    if errorAPIInit <> "No Error":                # This string Must match the c++ DLL code
-        raise OlxAPIException(errorAPIInit) 
+    if errorAPIInit != "No Error":                # This string Must match the c++ DLL code
+        raise OlxAPIException(errorAPIInit)
+    #
+    print ( "\tOlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + dllPath )
 
 # API function prototypes
 def Version():
@@ -63,7 +68,7 @@ def Version():
     """
     buf = create_string_buffer(b'\000' * 1028)
     ASPENOlxAPIDLL.OlxAPIVersionInfo(buf)
-    vData = buf.value.split(" ")
+    vData = (buf.value).decode("UTF-8").split(" ")
     return vData[2]
 
 def BuildNumber():
@@ -71,7 +76,7 @@ def BuildNumber():
     """
     buf = create_string_buffer(b'\000' * 1028)
     ASPENOlxAPIDLL.OlxAPIVersionInfo(buf)
-    vData = buf.value.split(" ")
+    vData = (buf.value).decode("UTF-8").split(" ")
     return int(vData[4])
 
 def SaveDataFile(filePath):
@@ -85,7 +90,7 @@ def SaveDataFile(filePath):
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPISaveDataFile.argtypes = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPISaveDataFile(filePath)
+    return ASPENOlxAPIDLL.OlxAPISaveDataFile(filePath.encode('UTF-8'))
 
 def LoadDataFile(filePath,readonly):
     """Read ASPEN OLR data file from disk
@@ -99,7 +104,7 @@ def LoadDataFile(filePath,readonly):
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPILoadDataFile.argtypes = [c_char_p,c_int]
-    return ASPENOlxAPIDLL.OlxAPILoadDataFile(filePath,readonly)
+    return ASPENOlxAPIDLL.OlxAPILoadDataFile(filePath.encode('UTF-8'),readonly)
 
 def ReadChangeFile(filePath):
     """Read ASPEN CHF file from disk
@@ -114,11 +119,11 @@ def ReadChangeFile(filePath):
         1xxx           : Change file applied with xxx warnings
     """
     ASPENOlxAPIDLL.OlxAPIReadChangeFile.argtypes = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPIReadChangeFile(filePath)
+    return ASPENOlxAPIDLL.OlxAPIReadChangeFile(filePath.encode('UTF-8'))
 
 def GetEquipment(type, p_hnd):
     """Retrieves handle of the next equipment of given type in the system.
-     
+
     This function will return the handle of all the objectsof the given type,
     one by one, in the order they are stored in the OLR file
 
@@ -139,7 +144,7 @@ def GetEquipment(type, p_hnd):
 
 def EquipmentType(hnd):
     """Returns equipment of the given handle.
-     
+
     Args:
         hdn (c_int): Object handle
 
@@ -178,17 +183,17 @@ def FindBus(name, kv):
         hnd     : bus handle
     """
     ASPENOlxAPIDLL.OlxAPIFindBus.argtypes = [c_char_p,c_double]
-    return ASPENOlxAPIDLL.OlxAPIFindBus(name, kv)
+    return ASPENOlxAPIDLL.OlxAPIFindBus(name.encode('UTF-8'), kv)
 
 def FindEquipmentByTag(tags, devType, hnd):
-    """Find handle of object of devType that has 
+    """Find handle of object of devType that has
        the given tags
 
     Args:
         tags (c_char_p): Tag string
-        tags (c_int):    Object type: TC_BUS, TC_LOAD, TC_SHUNT, TC_GEN , TC_SVD, 
-                         TC_LINE, TC_XFMR, TC_XFMR3, TC_PS, TC_SCAP, TC_MU,   
-                         TC_RLYGROUP, TC_RLYOCG, TC_RLYOCP, TC_RLYDSG, TC_RLYDSP, 
+        tags (c_int):    Object type: TC_BUS, TC_LOAD, TC_SHUNT, TC_GEN , TC_SVD,
+                         TC_LINE, TC_XFMR, TC_XFMR3, TC_PS, TC_SCAP, TC_MU,
+                         TC_RLYGROUP, TC_RLYOCG, TC_RLYOCP, TC_RLYDSG, TC_RLYDSP,
                          TC_FUSE,   TC_SWITCH, TC_RECLSRP, TC_RECLSRG or zero.
         hnd (POINTER(c_int)):  Object handle
     Returns:
@@ -198,7 +203,7 @@ def FindEquipmentByTag(tags, devType, hnd):
              Call this function with devType equal 0 to search all object types.
     """
     ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag.argtypes = [c_char_p,c_int,POINTER(c_int)]
-    return ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag(tags, devType, hnd)
+    return ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag(tags.encode('UTF-8'), devType, hnd)
 
 def FindBusNo(no):
     """Find handle of bus with given number.
@@ -229,30 +234,30 @@ def SetData(hnd, token, p_data):
     return ASPENOlxAPIDLL.OlxAPISetData(hnd, token, p_data)
 
 def GetBusEquipment(hndBus, type, pHnd):
-    """Retrieves the handle of the next equipment of a given type 
+    """Retrieves the handle of the next equipment of a given type
     that is attached to a bus.
 
     The equipment type can be one of the following:
-    TC_GEN: 	to get the handle for the generator. 
+    TC_GEN: 	to get the handle for the generator.
                 There can be at most one at a bus.
-    TC_LOAD: 	to get the handle for the load. 
+    TC_LOAD: 	to get the handle for the load.
                 There can be at most one at a bus.
-    TC_SHUNT:	to get the handle for the shunt. 
+    TC_SHUNT:	to get the handle for the shunt.
                 There can be at most one at a bus.
-    TC_SVD:	    to get the handle for the switched shunt. 
+    TC_SVD:	    to get the handle for the switched shunt.
                 There can be at most one at a bus.
     TC_GENUNIT: 	to get the handle for the next generating unit.
     TC_LOADUNIT: 	to get the handle for the next load unit.
     TC_SHUNTUNIT: 	to get the handle for the next shunt unit.
     TC_BRANCH: 	to get the handle for the next branch object.
 
-    Set p_hnd to zero to get the first equipment handle. 
+    Set p_hnd to zero to get the first equipment handle.
 
     Args:
         hndBus (c_int): bus handle
         type (c_int): object type code
         p_hnd (byref(c_int): object handle
-    
+
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
@@ -261,10 +266,10 @@ def GetBusEquipment(hndBus, type, pHnd):
     return ASPENOlxAPIDLL.OlxAPIGetBusEquipment( hndBus, type, pHnd)
 
 def PostData(hnd):
-    """Perform validation and update objct data in the network database 
+    """Perform validation and update objct data in the network database
 
-        Changes to the equipment data made through SetData function will 
-        not be committed to the program network database until after 
+        Changes to the equipment data made through SetData function will
+        not be committed to the program network database until after
         this function has been executed with success.
 
     Args:
@@ -291,12 +296,12 @@ def DeleteEquipment(hnd):
     return ASPENOlxAPIDLL.OlxAPIDeleteEquipment(hnd)
 
 def GetPSCVoltage( hnd, vdOut1, vdOut2, style ):
-    """Retrieves pre-fault voltage of a bus, or of connected buses of 
+    """Retrieves pre-fault voltage of a bus, or of connected buses of
     a line, transformer, switch or phase shifter.
 
     Args:
         hnd	(c_int): object handle
-        vdOut1 (c_double*3): voltage result, real part or magnitude, 
+        vdOut1 (c_double*3): voltage result, real part or magnitude,
                              at equipment terminals
         vdOut2 (c_double*3): voltage result, imaginary part or angle in degree
                              at equipment terminals
@@ -311,12 +316,12 @@ def GetPSCVoltage( hnd, vdOut1, vdOut2, style ):
     return ASPENOlxAPIDLL.OlxAPIGetPSCVoltage( hnd, vdOut1, vdOut2, style )
 
 def GetSCVoltage( hnd, vdOut1, vdOut2, style ):
-    """Retrieves post-fault voltage of a bus, or of connected buses of 
+    """Retrieves post-fault voltage of a bus, or of connected buses of
     a line, transformer, switch or phase shifter.
 
     Args:
         hnd	(c_int): object handle
-        vdOut1 (c_double*9): voltage result, real part or magnitude, 
+        vdOut1 (c_double*9): voltage result, real part or magnitude,
                              at equipment terminals
         vdOut2 (c_double*9): voltage result, imaginary part or angle in degree
                              at equipment terminals
@@ -333,16 +338,16 @@ def GetSCVoltage( hnd, vdOut1, vdOut2, style ):
     return ASPENOlxAPIDLL.OlxAPIGetSCVoltage( hnd, vdOut1, vdOut2, style )
 
 def GetSCCurrent( hnd, vdOut1, vdOut2, style ):
-    """Retrieve post fault current for a generator, load, shunt, switched shunt, 
-    generating unit, load unit, shunt unit, transmission line, transformer, 
-    switch or phase shifter. 
-    
-    You can get the total fault current by calling this function with the 
+    """Retrieve post fault current for a generator, load, shunt, switched shunt,
+    generating unit, load unit, shunt unit, transmission line, transformer,
+    switch or phase shifter.
+
+    You can get the total fault current by calling this function with the
     pre-defined handle of short circuit solution, HND_SC.
 
     Args:
         hnd	(c_int): object handle
-        vdOut1 (c_double*12): current result, real part or magnitude, into 
+        vdOut1 (c_double*12): current result, real part or magnitude, into
                              equipment terminals
         vdOut2 (c_double*12): current result, imaginary part or angle in degree,
                              into equipment terminals
@@ -390,14 +395,14 @@ def GetLogicScheme( hndRlyGroup, hndScheme ):
     return ASPENOlxAPIDLL.OlxAPIGetLogicScheme( hndRlyGroup, hndScheme );
 
 def GetRelayTime( hndRelay, mult, ignore_signalonly, trip, device ):
-    """Return operating time for a fuse, an overcurrent relay 
+    """Return operating time for a fuse, an overcurrent relay
     (phase or ground), or a distance relay (phase or ground)
     in fault simulation result.
-    
+
     Args:
         hndRelay (c_int): [in] relay object handle
         mult (c_double) : [in] relay current multiplying factor
-        ignore_signalonly: [in] Consider relay element signal-only flag 
+        ignore_signalonly: [in] Consider relay element signal-only flag
                            1 - Yes; 0 - No
         trip (byref(c_double)) : [out] relay operating time in seconds
         device (c_char_p): [out] relay operation code:
@@ -416,7 +421,7 @@ def GetRelayTime( hndRelay, mult, ignore_signalonly, trip, device ):
 def Run1LPFCommand(Params):
     """Run OneLiner command
 
-    Args: 	
+    Args:
         Params (c_char_p): XML string, or full path name to XML file, containing a XML node
                         - Node name: OneLiner command
                         - Node attributes: required command parameters
@@ -430,11 +435,11 @@ def Run1LPFCommand(Params):
                            "PICKED " 	the highlighted bus on the 1-line diagram
                            "'BNAME1                ,KV1;’BNAME2’,KV2;..."  Bus name and nominal kV.
                 TIERS	[0] Number of tiers around selected object. This attribute is ignored if SELECTEDOBJ is not found.
-                AREAS	[0-9999] Comma delimited list of area numbers and ranges to check relaygroups agains backup. 
+                AREAS	[0-9999] Comma delimited list of area numbers and ranges to check relaygroups agains backup.
                                This attribute is ignored if SELECTEDOBJ is found.
-                ZONES	[0-9999] Comma delimited list of zone numbers and ranges to check relaygroups agains backup. 
+                ZONES	[0-9999] Comma delimited list of zone numbers and ranges to check relaygroups agains backup.
                             This attribute is ignored if AREAS or SELECTEDOBJ are found.
-                KVS	[0-999] Comma delimited list of KV levels and ranges to check relaygroups agains backup. 
+                KVS	[0-999] Comma delimited list of KV levels and ranges to check relaygroups agains backup.
                             This attribute is ignored if SELECTEDOBJ is found.
                 TAGS	Comma delimited list of bus tags. This attribute is ignored if SELECTEDOBJ is found.
                 EQUIPMENTCAT	(*) Equipment category: 0-Switch gear; 1- Cable; 2- Open air; 3- MCC                s and panelboards 1kV or lower
@@ -452,8 +457,8 @@ def Run1LPFCommand(Params):
                 FUSECURVE	Fuse curve for arc duration calculation. Must be present when ARCDURATION=" FUSECURVE"
                 BRKINTTIME	Breaker interrupting time in cycle. Must be present when ARCDURATION=" FASTEST" and "DEVICE"
                 DEVICETIERS	[1] Number of tiers. Must be present when ARCDURATION=" FASTEST" and ="SEA"
-                DEVICE	String  with location of the relaygroup and the relay name 
-                         "BNO1;                BNAME1                ;KV1;BNO2;                BNAME2                ;KV2;                CKT                ;BTYP; RELAY_ID; ". 
+                DEVICE	String  with location of the relaygroup and the relay name
+                         "BNO1;                BNAME1                ;KV1;BNO2;                BNAME2                ;KV2;                CKT                ;BTYP; RELAY_ID; ".
                          Format description of these fields are is in OneLiner help section 10.2.
                 ARCTIMELIMIT	[1] Perform no energy calculation when arc duration time is longer than 2 seconds
 
@@ -466,7 +471,7 @@ def Run1LPFCommand(Params):
                FLAGPCNT= [15] Current deviation percent threshold.
                === Only when BASELINECASE is not specified
                BUSLIST= Bus list, one on each row in format 'BusName',kV
-               BUSNOLIST= Bus number list, coma delimited. 
+               BUSNOLIST= Bus number list, coma delimited.
                           This attribute is ignored when BUSLIST is specified
                === Only when no BUSLIST and BUSNOLIST is  specified
                XGND= Fault reactance X
@@ -589,7 +594,7 @@ def Run1LPFCommand(Params):
                 OUTAGE2XFMRS	Run double and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEXFMRS =0
                 OUTAGE3SOURCES	Outage only  3 strongest sources: 0-False; 1-True. Ignored if OUTAGEMULINES=0 and OUTAGEXFMRS =0
 
-            Command: SETGENREFANGLE - Network | Set generator reference angle   
+            Command: SETGENREFANGLE - Network | Set generator reference angle
             Attributes:
                 REPORTPATHNAME	Full pathname of folder for report files.
                 REFERENCEGEN	Bus name and kV of reference generator in format: 'BNAME', KV.
@@ -623,7 +628,7 @@ def Run1LPFCommand(Params):
 
             Command: EXPORTNETWORK = File | Export network data
             Attributes:
-               FORMAT     = Output format: [DXT]-ASPEN DXT; PSSE-PSS/E Raw and Seq 
+               FORMAT     = Output format: [DXT]-ASPEN DXT; PSSE-PSS/E Raw and Seq
                SCOPE      =  Export scope: [0]-Entire network; 1-Area number; 2- Zone number
                AREANO     =  Export area number
                ZONENO	  =  Export zone number
@@ -670,8 +675,8 @@ def Run1LPFCommand(Params):
 
             Command: SAVEDATAFILE - File | Save and File | Save as
             Attributes:
-               PATHNAME     = Name or full pathname of new OLR file for File | Save as command. 
-                              If only file name is given, file will be saved in the folder 
+               PATHNAME     = Name or full pathname of new OLR file for File | Save as command.
+                              If only file name is given, file will be saved in the folder
                               where the current OLR file is located.
                               If no attribute is specified, the File | Save command will be executed.
 
@@ -686,11 +691,11 @@ def DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
     """Run stepped-event simulation
 
     Remarks:
-        After successful call of OlrxAPIDoSteppedEvent() you must call 
-        function GetSteppedEvent() to retrieve detailed result of 
+        After successful call of OlrxAPIDoSteppedEvent() you must call
+        function GetSteppedEvent() to retrieve detailed result of
         each step in the simulation.
 
-    Args: 	
+    Args:
         hnd (c_int): handle of a bus or a relay group.
         fltOpt (c_double*64): simulation options
             fltOpt(1) - Fault connection code
@@ -698,16 +703,16 @@ def DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
                             2=2LG BC, 3=2LG CA, 4=2LG AB
                             5=1LG A, 5=1LG B, 6=1LG C
                             7=LL BC, 7=LL CA, 8=LL AB
-            fltOpt(2) - Intermediate percent between 0.01-99.99. 0 for a 
-                        close-in fault. This parameter is ignored if nDevHnd 
+            fltOpt(2) - Intermediate percent between 0.01-99.99. 0 for a
+                        close-in fault. This parameter is ignored if nDevHnd
                         is a bus handle.
-            fltOpt(3) - Fault resistance, ohm 
+            fltOpt(3) - Fault resistance, ohm
             fltOpt(4) - Fault reactance, ohm
-            fltOpt(4+1) - Zero or Fault connection code for additional user event 
+            fltOpt(4+1) - Zero or Fault connection code for additional user event
             fltOpt(4+2) - Time  of additional user event, seconds.
-            fltOpt(4+3) - Fault resistance in additional user event, ohm 
+            fltOpt(4+3) - Fault resistance in additional user event, ohm
             fltOpt(4+4) - Fault reactance in additional user event, ohm
-            fltOpt(4+5) - Zero or Fault connection code for additional user event 
+            fltOpt(4+5) - Zero or Fault connection code for additional user event
         ...
         runOpt (c_int*5): simulation options flags. 1 - set; 0 - reset
             runOpt(1)  - Consider OCGnd operations
@@ -733,10 +738,10 @@ def GetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest 
         step (c_int): Sequential index of the event in the simulation.
                       (1 is the initial user-defined event)
         timeStamp (byref(c_double)): Event time in seconds
-        fltCurrent (byref(c_double)): Highest phase fault current magnitude 
+        fltCurrent (byref(c_double)): Highest phase fault current magnitude
                                       at this step
         userDef (byref(c_double)): User defined event flag. 1= true; 0= false
-        eventDesc (c_char_p): Event description string that includes list 
+        eventDesc (c_char_p): Event description string that includes list
                               of all devices that had tripped.
         faultDesc (c_char_p): Fault description string of the event.
 
@@ -747,7 +752,7 @@ def GetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest 
     OlrxAPIGetSteppedEvent.argstype = [c_int,c_void_p,c_void_p,c_void_p,c_char_p,c_char_p]
     return ASPENOlxAPIDLL.OlxAPIGetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest )
 
-def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
+def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
                             ReportTXT, ReportCSV, ConfigFile) :
     """Run breaker rating study
 
@@ -758,30 +763,30 @@ def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
                          ...: or list of bus hnd terminated with -1
         Scope[1] – Breaker rating standard: 0-ANSI/IEEE; 1-IEC.
         Scope[2] – Bus selection: 0-All buses; 1-in Area; 2-in Zone; 3- selected buses
-        Scope[3] – Selected area or zone number. 
-        Scope[4] or list of handle number of selected buses. The last element in the list 
+        Scope[3] – Selected area or zone number.
+        Scope[4] or list of handle number of selected buses. The last element in the list
                      must be -1.
         RatingThreshold [in] Percent rating threshold.
-        OutputOpt  [in] Rating output option: 
-                        0- Output only overduty cases; 
+        OutputOpt  [in] Rating output option:
+                        0- Output only overduty cases;
                         1- Output all cases;
-                        OR Floating number S (0 < S < 1) - 
-                                 Check only breakers at buses where ratio 
+                        OR Floating number S (0 < S < 1) -
+                                 Check only breakers at buses where ratio
                                  “Bus fault current / Breaker rating” exceeds S.
-        OptionalReport  [in] Integer number flag. Enable various bits to enable 
-                        optional sections in rating report: Bit 1- Detailed fault 
-                        simulation result; Bit 2- Breaker name plate data; 
+        OptionalReport  [in] Integer number flag. Enable various bits to enable
+                        optional sections in rating report: Bit 1- Detailed fault
+                        simulation result; Bit 2- Breaker name plate data;
                         Bit 3- List of connected equipment.
         ReportTXT  [in] Full path name of text report file. Set to emty to omit text report.
         ReportCSV  [in] Full path name of CSV report file. Set to emty to omit CSV report.
-        ConfigFile [in] Full path name of  breaker rating configuration file to apply in 
+        ConfigFile [in] Full path name of  breaker rating configuration file to apply in
                         this study. Set to emty to omit reading configuration file.
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIDoBreakerRating.argtypes = [POINTER(c_int),c_double,c_double,c_int,c_char_p,c_char_p,c_char_p]
-    return ASPENOlxAPIDLL.OlxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
+    return ASPENOlxAPIDLL.OlxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
                             ReportTXT, ReportCSV, ConfigFile)
 def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
     """Create boundary equivalent network
@@ -789,7 +794,7 @@ def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
     Args:
         EquFileName [in] Path name of the boundary equivalent OLR file.
 
-        BusList   [in]   Array of handles of buses to be retained in the equivalent. 
+        BusList   [in]   Array of handles of buses to be retained in the equivalent.
                          The list must be terminated with value -1
 
         FltOpt    [in] study parameters
@@ -799,7 +804,7 @@ def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
 
     Returns:
         OLRXAPI_FAILURE: Failure
-        >0             : Index number of the last fault simulated by the function
+        OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent.argtypes = [c_char_p,POINTER(c_int),c_double*3]
     return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent(EquFileName, BusList, FltOpt)
@@ -809,10 +814,10 @@ def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
     Args:
         hnd	(c_int): handle of a bus, branch or a relay group.
         vnFltConn (c_int*4): fault connection flags. 1 - set; 0 - reset
-            vnFltConn[1] - 3PH 
-            vnFltConn[2] - 2LG 
-            vnFltConn[3] - 1LG 
-            vnFltConn[4] - LL 
+            vnFltConn[1] - 3PH
+            vnFltConn[2] - 2LG
+            vnFltConn[3] - 1LG
+            vnFltConn[4] - LL
         fltOpt(c_double*15): fault options flags. 1 - set; 0 - reset
             vdFltOpt(1)  - Close-in
             vdFltOpt(2)  - Close-in w/ outage
@@ -840,16 +845,16 @@ def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
         nClearPrev (c_int): clear previous result flag. 1 - set; 0 - reset
 
     Remarks:
-        (*)	To simulate a single intermediate fault without auto-sequencing, 
+        (*)	To simulate a single intermediate fault without auto-sequencing,
             set both vdFltOpt(13)and vdFltOpt(14) to zero
-        (**) Set this flag to 1 to simulate breaker open failure condition 
-             that caused two lines that share a common breaker to be separated 
-             from the bus while still connected to each other. TC_BRANCH handle 
+        (**) Set this flag to 1 to simulate breaker open failure condition
+             that caused two lines that share a common breaker to be separated
+             from the bus while still connected to each other. TC_BRANCH handle
              of the two lines must be included in the array vnOutageLst.
 
     Returns:
         OLRXAPI_FAILURE: Failure
-        >0             : Index number of the last fault simulated by the function
+        OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIDoFault.argtypes = [c_int,c_int*4,c_double*15,c_int*4,c_int*100,c_double,c_double,c_int]
     return ASPENOlxAPIDLL.OlxAPIDoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev)
@@ -857,16 +862,16 @@ def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
 def PickFault( index, tiers ):
     """Select a specific short circuit simulation case.
 
-    This function must be called before any post fault voltage and current results 
+    This function must be called before any post fault voltage and current results
     and relay time can be retrieved.
-    
+
     Args:
         index (c_int): fault number or
                         SF_FIRST: first fault
                         SF_NEXT: next fault
                         SF_PREV: previous fault
                         SF_LAST: last available fault
-        tiers (c_int): number of tiers around faulted bus to compute solution results 
+        tiers (c_int): number of tiers around faulted bus to compute solution results
 
     Returns:
         OLRXAPI_FAILURE: Failure
@@ -890,7 +895,7 @@ def FaultDescription(index):
     """
     ASPENOlxAPIDLL.OlxAPIFaultDescription.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFaultDescription.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFaultDescription(index)
+    return ASPENOlxAPIDLL.OlxAPIFaultDescription(index).decode("UTF-8")
 
 def ErrorString():
     """Retrieves error message string
@@ -898,12 +903,12 @@ def ErrorString():
         string (c_char_p)
     """
     ASPENOlxAPIDLL.OlxAPIErrorString.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIErrorString()
+    return ASPENOlxAPIDLL.OlxAPIErrorString().decode("UTF-8")
 
 def PrintObj1LPF(hnd):
-    """Return a text description of network database object 
-       (bus, generator, load, shunt, switched shunt, transmission line, 
-       transformer, switch, phase shifter, distance relay, 
+    """Return a text description of network database object
+       (bus, generator, load, shunt, switched shunt, transmission line,
+       transformer, switch, phase shifter, distance relay,
        overcurrent relay, fuse, recloser, relay group)
 
     Args:
@@ -927,7 +932,7 @@ def FullBusName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullBusName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullBusName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullBusName(hnd)
+    return ASPENOlxAPIDLL.OlxAPIFullBusName(hnd).decode("UTF-8")
 
 def FullBranchName(hnd):
     """Return a string composed of Bus, Bus2, Circuit ID and type
@@ -941,7 +946,7 @@ def FullBranchName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullBranchName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullBranchName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullBranchName(hnd)
+    return ASPENOlxAPIDLL.OlxAPIFullBranchName(hnd).decode("UTF-8")
 
 def FullRelayName(hnd):
     """Return a string composed of relay type, name and branch location
@@ -954,7 +959,7 @@ def FullRelayName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullRelayName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullRelayName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullRelayName(hnd)
+    return ASPENOlxAPIDLL.OlxAPIFullRelayName(hnd).decode("UTF-8")
 
 def GetObjJournalRecord(hnd):
     """Retrieve journal jounal record details of a data object in the OLR file.
@@ -963,7 +968,7 @@ def GetObjJournalRecord(hnd):
         hnd (c_int): object handle
 
     Returns:
-        JRec (c_char_p): String of journal record fields, separated by new line character: 
+        JRec (c_char_p): String of journal record fields, separated by new line character:
             -	Create date and time
             -	Created by
             -	Last modified date and time
@@ -972,11 +977,11 @@ def GetObjJournalRecord(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord(hnd)
+    return ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord(hnd).decode("UTF-8")
 
 def GetObjTags(hnd):
-    """Retrieve tag string for a bus, generator, load, shunt, switched shunt, 
-       transmission line, transformer, switch, phase shifter, distance relay, 
+    """Retrieve tag string for a bus, generator, load, shunt, switched shunt,
+       transmission line, transformer, switch, phase shifter, distance relay,
        overcurrent relay, fuse, recloser, relay group.
 
     Args:
@@ -985,16 +990,16 @@ def GetObjTags(hnd):
     Returns:
         tags (c_char_p): Tag string
 
-    Note: if the funtion fails to execute the return string will consist of 
+    Note: if the funtion fails to execute the return string will consist of
           error message that begins with the key words: "GetObjTags failure:..."
     """
     ASPENOlxAPIDLL.OlxAPIGetObjTags.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjTags.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjTags(hnd)
+    return ASPENOlxAPIDLL.OlxAPIGetObjTags(hnd).decode("UTF-8")
 
 def GetObjMemo(hnd):
-    """Retrieve memo string for a bus, generator, load, shunt, switched shunt, 
-       transmission line, transformer, switch, phase shifter, distance relay, 
+    """Retrieve memo string for a bus, generator, load, shunt, switched shunt,
+       transmission line, transformer, switch, phase shifter, distance relay,
        overcurrent relay, fuse, recloser, relay group.
 
     Args:
@@ -1003,16 +1008,16 @@ def GetObjMemo(hnd):
     Returns:
         memo (c_char_p): Memo string
 
-    Remarks: if the funtion fails to execute the return string will consist of 
+    Remarks: if the funtion fails to execute the return string will consist of
           error message that begins with the key words: "GetObjTags failure:..."
     """
     ASPENOlxAPIDLL.OlxAPIGetObjMemo.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjMemo.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjMemo(hnd)
+    return ASPENOlxAPIDLL.OlxAPIGetObjMemo(hnd).decode("UTF-8")
 
 def SetObjMemo(hnd,memo):
-    """Assign memo string for a bus, generator, load, shunt, switched shunt, 
-       transmission line, transformer, switch, phase shifter, distance relay, 
+    """Assign memo string for a bus, generator, load, shunt, switched shunt,
+       transmission line, transformer, switch, phase shifter, distance relay,
        overcurrent relay, fuse, recloser, relay group.
 
     Args:
@@ -1023,7 +1028,7 @@ def SetObjMemo(hnd,memo):
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
 
-    Remarks: Line breaks must be included in the memo string as escape 
+    Remarks: Line breaks must be included in the memo string as escape
        charater \n
     """
     ASPENOlxAPIDLL.OlxAPISetObjMemo.argstype = [c_int,c_char_p]
@@ -1032,8 +1037,8 @@ def SetObjMemo(hnd,memo):
 
 
 def SetObjTags(hnd,tags):
-    """Assign tag string for a bus, generator, load, shunt, switched shunt, 
-       transmission line, transformer, switch, phase shifter, distance relay, 
+    """Assign tag string for a bus, generator, load, shunt, switched shunt,
+       transmission line, transformer, switch, phase shifter, distance relay,
        overcurrent relay, fuse, recloser, relay group.
 
     Args:
@@ -1051,13 +1056,13 @@ def SetObjTags(hnd,tags):
     return ASPENOlxAPIDLL.OlxAPISetObjTags(hnd,tags)
 
 def MakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
-    """Return list of neighboring branches that can be used as outage list 
+    """Return list of neighboring branches that can be used as outage list
        in calling the DoFault function on a bus, branch or relay group.
 
     Args:
         hnd	(c_int): handle of a bus, branch or a relay group.
-        maxTiers (c_int): Number of tiers (must be positive) 
-        wantedTypes (c_int): Branch type to comsider. Sum of one or more 
+        maxTiers (c_int): Number of tiers (must be positive)
+        wantedTypes (c_int): Branch type to comsider. Sum of one or more
              following values: 1- Line; 2- 2-winding transformer;
              4- Phase shifter; 8- 3-winding transformer; 16- Switch
         branchList (c_void_p): [in] array of c_int*listLen+1 or none
@@ -1066,7 +1071,7 @@ def MakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
                                   [out] Number of outage branches found.
 
     Remarks:
-        Calling this function with None in place of branchList will let you determine the 
+        Calling this function with None in place of branchList will let you determine the
         number of outage branches in the number of tiers specified.
 
     Returns:
@@ -1078,13 +1083,13 @@ def MakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
     return ASPENOlxAPIDLL.OlxAPIMakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen)
 
 def ComputeRelayTime(hnd, curMag, curAng, vMag, vAng,vpreMag, vpreAng, opTime, opDevice):
-    """Computes operating time for a fuse, recloser, an overcurrent relay (phase or ground), 
+    """Computes operating time for a fuse, recloser, an overcurrent relay (phase or ground),
        or a distance relay (phase or ground) at given currents and voltages.
 
     Args:
         hnd (c_int): relay object handle
-        curMag (c_double*5) [in] array of relay current magnitude in amperes of 
-                    phase A, B, C, and if applicable, Io currents in neutral 
+        curMag (c_double*5) [in] array of relay current magnitude in amperes of
+                    phase A, B, C, and if applicable, Io currents in neutral
                     of transformer windings P and S.
         curAng (c_double*5):  [in] array of relay current angles in degrees
         vMag (c_double*3):    [in] array of relay voltage magnitude in, line to neutral, in kV

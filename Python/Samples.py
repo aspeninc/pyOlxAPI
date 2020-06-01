@@ -30,17 +30,17 @@ def testDoRelayCoordination():
                   ' RELAYTYPE="3"' \
                   ' FAULTTYPE="5"' \
                   ' />' 
-    print checkParams
-    if OLRXAPI_FAILURE == OlxAPI.Run1LPFCommand(checkParams):
+    print(checkParams)
+    if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(checkParams):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print "Success"
+    print("Success")
 
 def testExportNetwork():
     """Test API Run1LPFCommand EXPORTNETWORK
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -52,23 +52,23 @@ def testExportNetwork():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         cmdParams = '<EXPORTNETWORK' \
                     ' FORMAT="DXT" DXTPATHNAME="' + olrFilePath + '.dxt"' \
                     ' />'
 
-        print cmdParams
-        if OLRXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
+        print(cmdParams)
+        if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "Success"
+        print("Success")
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def testExportRelay():
@@ -76,7 +76,7 @@ def testExportRelay():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -88,24 +88,24 @@ def testExportRelay():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         cmdParams = '<EXPORTRELAY' \
                     ' FORMAT="RAT" RATPATHNAME="' + olrFilePath + '.rat"' \
                     ' SCOPE= "3" SELECTEDOBJ="\'CLAYTOR\' 132"' \
                     ' DEVICETYPE= "OC,DS"' \
                     ' />'
-        print cmdParams
-        if OLRXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
+        print(cmdParams)
+        if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "Success"
+        print("Success")
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def testReadChangeFile(changeFile):
@@ -114,99 +114,99 @@ def testReadChangeFile(changeFile):
     argsGetData = {}
     argsGetData["hnd"] = HND_SYS
     argsGetData["token"] = SY_nNODSRly
-    if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+    if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
     noDS = argsGetData["data"]
     argsGetData["hnd"] = HND_SYS
     argsGetData["token"] = SY_nNOOCRly
-    if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+    if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
     noOC = argsGetData["data"]
-    print "Before change file DS= ", noDS, " OC= ", noOC
+    print("Before change file DS= ", noDS, " OC= ", noOC)
 
-    if OLRXAPI_OK != OlxAPI.ReadChangeFile(changeFile):
+    if OLXAPI_OK != OlxAPI.ReadChangeFile(changeFile):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
 
-    print OlxAPI.ErrorString()
+    print(OlxAPI.ErrorString())
     ttyLogFile = open(os.getenv('TEMP') + '\\PowerScriptTTYLog.txt', 'r')
     for line in ttyLogFile: 
-        print line 
+        print(line) 
     ttyLogFile.close()
 
     argsGetData["hnd"] = HND_SYS
     argsGetData["token"] = SY_nNODSRly
-    if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+    if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
     noDS = argsGetData["data"]
     argsGetData["hnd"] = HND_SYS
     argsGetData["token"] = SY_nNOOCRly
-    if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+    if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
     noOC = argsGetData["data"]
-    print "After change file DS= ", noDS, " OC= ", noOC
+    print("After change file DS= ", noDS, " OC= ", noOC)
 
 def testGetDataMupair():
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
         # Test OlxAPI.FindBus()
         bsName = "CLAYTOR"
         bsKV   = 132.0
         hnd    = OlxAPI.FindBus( bsName, bsKV )
-        if hnd == OLRXAPI_FAILURE:
-            print "Bus ", bsName, bsKV, " not found"
+        if hnd == OLXAPI_FAILURE:
+            print("Bus ", bsName, bsKV, " not found")
             return 1        # error
         argsGetData = {}
         argsGetData["hnd"] = hnd
         argsGetData["token"] = BUS_nNumber
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         bsNo = argsGetData["data"]
-        print("hnd= " + str(hnd) + ", Bus " + str(bsNo) + " " +  bsName + str(bsKV))
+        print(("hnd= " + str(hnd) + ", Bus " + str(bsNo) + " " +  bsName + str(bsKV)))
         branchHnd = c_int(0)
-        while ( OLRXAPI_OK == OlxAPI.GetBusEquipment( hnd, c_int(TC_BRANCH), byref(branchHnd) ) ) :
-            print( OlxAPI.FullBranchName(branchHnd) )
+        while ( OLXAPI_OK == OlxAPI.GetBusEquipment( hnd, c_int(TC_BRANCH), byref(branchHnd) ) ) :
+            print(( OlxAPI.FullBranchName(branchHnd) ))
             argsGetData = {}
             argsGetData["hnd"] = branchHnd.value
             argsGetData["token"] = BR_nType
-            if (OLRXAPI_OK != OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK != OlxAPILib.get_data(argsGetData)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
             typeCode = argsGetData["data"]
             if typeCode == TC_LINE:
                 argsGetData["hnd"] = branchHnd.value
                 argsGetData["token"] = BR_nHandle
-                if (OLRXAPI_OK != OlxAPILib.get_data(argsGetData)):
+                if (OLXAPI_OK != OlxAPILib.get_data(argsGetData)):
                     raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
                 hndLine = argsGetData["data"]
                 argsGetData["hnd"] = hndLine
                 argsGetData["token"] = LN_nMuPairHnd
                 argsGetData["data"] = 0
-                while OLRXAPI_OK == OlxAPILib.get_data(argsGetData):
+                while OLXAPI_OK == OlxAPILib.get_data(argsGetData):
                     hndPair = argsGetData["data"]
                     argsGetDataX = {}
                     argsGetDataX["hnd"] = hndPair
                     argsGetDataX["token"] = MU_nHndLine1
-                    if (OLRXAPI_OK != OlxAPILib.get_data(argsGetDataX)):
+                    if (OLXAPI_OK != OlxAPILib.get_data(argsGetDataX)):
                         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
                     hndLine1 = argsGetDataX["data"]
                     argsGetDataX["token"] = MU_nHndLine2
-                    if (OLRXAPI_OK != OlxAPILib.get_data(argsGetDataX)):
+                    if (OLXAPI_OK != OlxAPILib.get_data(argsGetDataX)):
                         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
                     hndLine2 = argsGetDataX["data"]
-                    print ( "MU pair " + str(hndPair) + ":" )
-                    print ( "  " + OlxAPI.FullBranchName(hndLine1) )
-                    print ( "  " + OlxAPI.FullBranchName(hndLine2) )
+                    print(( "MU pair " + str(hndPair) + ":" ))
+                    print(( "  " + OlxAPI.FullBranchName(hndLine1) ))
+                    print(( "  " + OlxAPI.FullBranchName(hndLine2) ))
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def imMag(r,i):
@@ -245,7 +245,7 @@ def testOlxAPIComputeRelayTime():
     Vang[0] = imAng(Vreal[0],Vimag[0]) 
     Vang[1] = imAng(Vreal[1],Vimag[1]) 
     Vang[2] = imAng(Vreal[2],Vimag[2])
-    print( "V=", Vmag[0], Vang[0], Vmag[1], Vang[1], Vmag[2], Vang[2] )
+    print(( "V=", Vmag[0], Vang[0], Vmag[1], Vang[1], Vmag[2], Vang[2] ))
 
     Imag = (c_double*5)(0.0)
     Imag[0] = imMag(Ireal[0],Iimag[0])
@@ -255,83 +255,83 @@ def testOlxAPIComputeRelayTime():
     Iang[0] = imAng(Ireal[0],Iimag[0]) 
     Iang[1] = imAng(Ireal[1],Iimag[1]) 
     Iang[2] = imAng(Ireal[2],Iimag[2])
-    print( "I=",Imag[0], Iang[0], Imag[1], Iang[1], Imag[2], Iang[2] )
+    print(( "I=",Imag[0], Iang[0], Imag[1], Iang[1], Imag[2], Iang[2] ))
     opTime = c_double(0.0)
     opDevice = create_string_buffer(b'\000' * 128)
 
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_RLYOCG
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = OG_sID
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         if "CL-G1" == argsGetData["data"]:
-            if OLRXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
+            if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-            print( "OC Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value )
+            print(( "OC Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
             break
     argsGetEquipment["tc"] = TC_RLYOCP
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         handle = argsGetEquipment["hnd"]
         argsGetData = {}
         argsGetData["hnd"] = handle
         argsGetData["token"] = OP_sID
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         if "CL-P1" == argsGetData["data"]:
-            if OLRXAPI_OK != OlxAPI.ComputeRelayTime(handle,Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
+            if OLXAPI_OK != OlxAPI.ComputeRelayTime(handle,Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-            print( "OC Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value )
+            print(( "OC Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
             break
     argsGetEquipment["tc"] = TC_RLYDSG
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = DG_sID
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         if "Clator_NV G1" == argsGetData["data"]:
-            if OLRXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
+            if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-            print( "DS Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value )
+            print(( "DS Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
             break
     argsGetEquipment["tc"] = TC_RLYDSP
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = DP_sID
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         if "CLPhase2" == argsGetData["data"]:
-            if OLRXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
+            if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-            print( "DS Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value )
+            print(( "DS Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
             break
 
 def testOlxAPIMakeOutageList():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_RLYGROUP
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         handle = argsGetEquipment["hnd"]
         aTags = OlxAPI.GetObjTags(handle)
         if aTags == "testOutageList;":
-            print ( "Outage list for relay group: " + OlxAPI.FullBranchName(handle) )
+            print(( "Outage list for relay group: " + OlxAPI.FullBranchName(handle) ))
             maxTiers = c_int(0)
             wantedTypes = c_int(1+2+4+8)
             listLen = c_int(0)
             OlxAPI.MakeOutageList(handle, maxTiers, wantedTypes, None, pointer(listLen) )
-            print( "listLen=" + str(listLen.value) )
+            print(( "listLen=" + str(listLen.value) ))
             branchList = (c_int*(5+listLen.value))(0)
             OlxAPI.MakeOutageList(handle, maxTiers, wantedTypes, branchList, pointer(listLen) )
             for i in range(listLen.value):
-                print "Branch=" + OlxAPI.FullBranchName(branchList[i])
+                print("Branch=" + OlxAPI.FullBranchName(branchList[i]))
             return
 
 
@@ -340,25 +340,25 @@ def testOlxAPIGetSetObjTagsMemo():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_LINE
     argsGetEquipment["hnd"] = 0  # Get all lines
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         lineHnd = argsGetEquipment["hnd"]
-        print OlxAPI.FullBranchName(lineHnd)
+        print(OlxAPI.FullBranchName(lineHnd))
         aLine1 = OlxAPI.GetObjTags(lineHnd)
         aLine2 = OlxAPI.GetObjMemo(lineHnd)
         if (aLine1 != "") or (aLine2 != ""):
-            print ( "Line: " + OlxAPI.FullBranchName(lineHnd) )
+            print(( "Line: " + OlxAPI.FullBranchName(lineHnd) ))
         if aLine1 != "":
-            print ( "  Existing tags=" + aLine1 )
-        if OLRXAPI_OK != OlxAPI.SetObjTags(lineHnd, c_char_p("NewTag;" + aLine1 ) ):
+            print(( "  Existing tags=" + aLine1 ))
+        if OLXAPI_OK != OlxAPI.SetObjTags(lineHnd, c_char_p("NewTag;" + aLine1 ) ):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         aLine1 = OlxAPI.GetObjTags(lineHnd)
-        print ( "  New tags=" + aLine1 )
+        print(( "  New tags=" + aLine1 ))
         if aLine2 != "":
-            print ( "  Existing memo=" + aLine2 )
-        if OLRXAPI_OK != OlxAPI.SetObjMemo(lineHnd, c_char_p("New memo: line 1\r\nLine2\r\n" + aLine2 ) ):
+            print(( "  Existing memo=" + aLine2 ))
+        if OLXAPI_OK != OlxAPI.SetObjMemo(lineHnd, c_char_p("New memo: line 1\r\nLine2\r\n" + aLine2 ) ):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         aLine2 = OlxAPI.GetObjMemo(lineHnd)
-        print ( "  New memo=" + aLine2 )
+        print(( "  New memo=" + aLine2 ))
         return 0
 
 def testFaultSimulation():
@@ -366,12 +366,12 @@ def testFaultSimulation():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_BUS
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         busHnd = argsGetEquipment["hnd"]
         sObj = OlxAPI.PrintObj1LPF(busHnd)
-        print sObj
+        print(sObj)
         if "NEVADA" in sObj:
-            print "\n>>>>>>Bus fault at: " + sObj
+            print("\n>>>>>>Bus fault at: " + sObj)
             run_busFault(busHnd)
             #print "\n>>>>>>Test bus fault SEA"
             #run_steppedEvent(busHnd)
@@ -385,19 +385,19 @@ def testBoundaryEquivalent(OlrFileName):
     bsName = "CLAYTOR"
     bsKV   = 132.0
     hnd    = OlxAPI.FindBus( bsName, bsKV )
-    if hnd == OLRXAPI_FAILURE:
+    if hnd == OLXAPI_FAILURE:
         raise OlxAPI.OlxAPIException("Bus ", bsName, bsKV, " not found")
     BusList[0] = c_int(hnd)
     bsName = "NEVADA"
     bsKV   = 132.0
     hnd    = OlxAPI.FindBus( bsName, bsKV )
-    if hnd == OLRXAPI_FAILURE:
+    if hnd == OLXAPI_FAILURE:
         raise OlxAPI.OlxAPIException("Bus ", bsName, bsKV, " not found")
     BusList[1] = c_int(hnd)
     BusList[2] = c_int(-1)
-    if OLRXAPI_OK != OlxAPI.BoundaryEquivalent(c_char_p(EquFileName), BusList, FltOpt):
+    if OLXAPI_OK != OlxAPI.BoundaryEquivalent(c_char_p(EquFileName), BusList, FltOpt):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print "Success. Equivalent is  in " + EquFileName
+    print("Success. Equivalent is  in " + EquFileName)
     return 0
 
 def testDoBreakerRating():
@@ -409,10 +409,10 @@ def testDoBreakerRating():
     ReportTXT = c_char_p("bkrratingreport.txt")
     ReportCSV = c_char_p("")
     ConfigFile = c_char_p("")
-    if OLRXAPI_OK != OlxAPI.DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
+    if OLXAPI_OK != OlxAPI.DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport, 
                             ReportTXT, ReportCSV, ConfigFile):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print "Success. Report is  in " + ReportTXT.value
+    print("Success. Report is  in " + ReportTXT.value)
     return 0
 
 def testGetData_BUS():
@@ -420,69 +420,69 @@ def testGetData_BUS():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_BUS
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         busHnd = argsGetEquipment["hnd"]
         argsGetData = {}
         argsGetData["hnd"] = busHnd
         argsGetData["token"] = BUS_sName
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busName = argsGetData["data"]
         argsGetData["token"] = BUS_dKVnominal
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busKV = argsGetData["data"]
-        print( busName, busKV )
+        print(( busName, busKV ))
     return 0
 
 def testGetData_DSRLY():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_RLYDSP
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = DP_vParamLabels
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         val = argsGetData["data"]
-        print val
+        print(val)
     return 0
 
 def testGetData_GENUNIT():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_GENUNIT
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = GU_vdX
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         val = argsGetData["data"]
-        print 'X= ' + str(val)
+        print('X= ' + str(val))
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = GU_nOnline
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         val = argsGetData["data"]
-        print 'nOnline= ' + str(val)
-        print val
+        print('nOnline= ' + str(val))
+        print(val)
     return 0
 
 def testGetData_BREAKER():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_BREAKER
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = BK_vnG1DevHnd
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         val = argsGetData["data"]
-        print val
+        print(val)
     return 0
 
 def testGetData_SCHEME():
@@ -491,53 +491,53 @@ def testGetData_SCHEME():
     argsGetData = {}
     argsGetEquipment["tc"] = TC_SCHEME
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData["hnd"] = argsGetEquipment["hnd"]
         argsGetData["token"] = LS_nRlyGrpHnd
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         rlyGrpHnd = argsGetData["data"]
         argsGetData["token"] = LS_sID
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         sID = argsGetData["data"]
         argsGetData["token"] = LS_sEquation
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         sEqu = argsGetData["data"]
         argsGetData["token"] = LS_sVariables
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         sVariables = argsGetData["data"]
-        print 'Scheme: ' + sID + '@' + OlxAPI.FullBranchName(rlyGrpHnd) + "\n" + \
-            sEqu + "\n" + sVariables
+        print('Scheme: ' + sID + '@' + OlxAPI.FullBranchName(rlyGrpHnd) + "\n" + \
+            sEqu + "\n" + sVariables)
     
     # Through relay groups
     argsGetEquipment["tc"] = TC_RLYGROUP
     argsGetEquipment["hnd"] = 0
     argsGetLogicScheme = {}
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         schemeHnd = c_int(0)
-        while (OLRXAPI_OK == OlxAPI.GetLogicScheme(argsGetEquipment["hnd"], byref(schemeHnd) )):
+        while (OLXAPI_OK == OlxAPI.GetLogicScheme(argsGetEquipment["hnd"], byref(schemeHnd) )):
             argsGetData["hnd"] = schemeHnd.value
             argsGetData["token"] = LS_nRlyGrpHnd
-            if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+            if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
             rlyGrpHnd = argsGetData["data"]
             argsGetData["token"] = LS_sID
-            if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+            if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
             sID = argsGetData["data"]
             argsGetData["token"] = LS_sEquation
-            if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+            if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
             sEqu = argsGetData["data"]
             argsGetData["token"] = LS_sVariables
-            if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+            if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
             sVariables = argsGetData["data"]
-            print 'Scheme: ' + sID + '@' + OlxAPI.FullBranchName(rlyGrpHnd) + "\n" + \
-                sEqu + "\n" + sVariables
+            print('Scheme: ' + sID + '@' + OlxAPI.FullBranchName(rlyGrpHnd) + "\n" + \
+                sEqu + "\n" + sVariables)
     return 0
 
 def testSaveDataFile(olrFilePath):
@@ -545,9 +545,9 @@ def testSaveDataFile(olrFilePath):
     testReadChangeFile(str(olrFilePath).replace( ".olr", ".chf"))
     olrFilePathNew = str(olrFilePath).replace( ".olr", "x.olr" )
     olrFilePathNew = olrFilePathNew.replace( ".OLR", "x.olr" )
-    if OLRXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
+    if OLXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print olrFilePathNew + " had been saved successfully"
+    print(olrFilePathNew + " had been saved successfully")
     return 0
 
 def testFindObj():
@@ -555,54 +555,54 @@ def testFindObj():
     bsName = "CLAYTOR"
     bsKV   = 132.0
     hnd    = OlxAPI.FindBus( bsName, bsKV )
-    if hnd == OLRXAPI_FAILURE:
-        print "Bus ", bsName, bsKV, " not found"
+    if hnd == OLXAPI_FAILURE:
+        print("Bus ", bsName, bsKV, " not found")
     else:
         argsGetData = {}
         argsGetData["hnd"] = hnd
         argsGetData["token"] = BUS_nNumber
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         bsNo = argsGetData["data"]
-        print "hnd= ", hnd, "Bus ", bsNo, " ", bsName, bsKV 
-        print OlxAPI.PrintObj1LPF(hnd)
+        print("hnd= ", hnd, "Bus ", bsNo, " ", bsName, bsKV) 
+        print(OlxAPI.PrintObj1LPF(hnd))
 
     # Test OlxAPI.FindBusNo()
     bsNo = 99
     hnd    = OlxAPI.FindBusNo( bsNo )
-    if hnd == OLRXAPI_FAILURE:
-        print "Bus ", bsNo, " not found"
+    if hnd == OLXAPI_FAILURE:
+        print("Bus ", bsNo, " not found")
     else:
         argsGetData = {}
         argsGetData["hnd"] = hnd
         argsGetData["token"] = BUS_sName
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         bsName = argsGetData["data"]
         argsGetData["hnd"] = hnd
         argsGetData["token"] = BUS_dKVnominal
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         bsKV = argsGetData["data"]
-        print "hnd= ", hnd, " Bus ", bsNo, " ", bsName, " ", bsKV
+        print("hnd= ", hnd, " Bus ", bsNo, " ", bsName, " ", bsKV)
 
     # Test OlxAPI.FindEquipmentByTag
     tags = c_char_p("tagS")
     equType = c_int(0)
     equHnd = (c_int*1)(0)
     count = 0
-    while OLRXAPI_OK == OlxAPI.FindEquipmentByTag( tags, equType, equHnd ):
-        print OlxAPI.PrintObj1LPF(equHnd[0])
+    while OLXAPI_OK == OlxAPI.FindEquipmentByTag( tags, equType, equHnd ):
+        print(OlxAPI.PrintObj1LPF(equHnd[0]))
         count = count + 1
-    print "Objects with tag " + tags.value + ": " + str(count)
+    print("Objects with tag " + tags.value + ": " + str(count))
     return 0
 
 def testDeleteEquipment(olrFilePath):
     hnd = (c_int*1)(0)
     ii = 5
-    while (OLRXAPI_OK == OlxAPI.GetEquipment(TC_BUS,hnd)):
+    while (OLXAPI_OK == OlxAPI.GetEquipment(TC_BUS,hnd)):
         busHnd = hnd[0]
-        print "Delete " + OlxAPI.PrintObj1LPF(busHnd)
+        print("Delete " + OlxAPI.PrintObj1LPF(busHnd))
         OlxAPI.DeleteEquipment(busHnd)
         if ii == 0:
             break
@@ -610,9 +610,9 @@ def testDeleteEquipment(olrFilePath):
 
     olrFilePathNew = olrFilePath.lower()
     olrFilePathNew = olrFilePathNew.replace( ".olr", "x.olr" )
-    if OLRXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
+    if OLXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print olrFilePathNew + " had been saved successfully"
+    print(olrFilePathNew + " had been saved successfully")
 
 def testGetData_SetData():
 
@@ -622,74 +622,74 @@ def testGetData_SetData():
     # Test GetData with special handles
     argsGetData["hnd"] = HND_SYS
     argsGetData["token"] = SY_nNObus
-    if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+    if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-    print "Number of buses: ", argsGetData["data"]
+    print("Number of buses: ", argsGetData["data"])
 
     # Test SetData and GetData
     argsGetEquipment["tc"] = TC_BUS
     argsGetEquipment["hnd"] = 0
     ii = 100
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         busHnd = argsGetEquipment["hnd"]
         argsGetData = {}
         argsGetData["hnd"] = busHnd
         argsGetData["token"] = BUS_dKVnominal
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busKV = argsGetData["data"]
         argsGetData["token"] = BUS_sName
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busNameOld = argsGetData["data"]
         argsSetData = {}
         argsSetData["hnd"] = busHnd
         argsSetData["token"] = BUS_sName
         argsSetData["data"] = busNameOld+str(ii+1)
-        if OLRXAPI_OK != set_data(argsSetData):
+        if OLXAPI_OK != set_data(argsSetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         argsGetData["token"] = BUS_nNumber
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busNumberOld = argsGetData["data"]
         argsSetData["token"] = BUS_nNumber
         argsSetData["data"] = ii+1
-        if OLRXAPI_OK != set_data(argsSetData):
+        if OLXAPI_OK != set_data(argsSetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        if OLRXAPI_OK != OlxAPI.PostData(busHnd):
+        if OLXAPI_OK != OlxAPI.PostData(busHnd):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         argsGetData["token"] = BUS_sName
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busNameNew = argsGetData["data"]
         argsGetData["token"] = BUS_nNumber
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         busNumberNew = argsGetData["data"]
-        print "Old:", busNumberOld, busNameOld, busKV, "kV -> New: ", busNumberNew, busNameNew, busKV, "kV"
+        print("Old:", busNumberOld, busNameOld, busKV, "kV -> New: ", busNumberNew, busNameNew, busKV, "kV")
         ii = ii + 1
     
     argsGetEquipment["tc"] = TC_GENUNIT
     argsGetEquipment["hnd"] = 0
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         argsGetData = {}
         hnd = argsGetEquipment["hnd"]
         argsGetData["hnd"] = hnd
         argsGetData["token"] = GU_vdX
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print OlxAPI.PrintObj1LPF(hnd) + " X=", argsGetData["data"]
+        print(OlxAPI.PrintObj1LPF(hnd) + " X=", argsGetData["data"])
         argsSetData = {}
         argsSetData["hnd"] = hnd
         argsSetData["token"] = GU_vdX
         argsSetData["data"] = [0.21,0.22,0.23,0.24,0.25]
-        if OLRXAPI_OK != set_data(argsSetData):
+        if OLXAPI_OK != set_data(argsSetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        if OLRXAPI_OK != OlxAPI.PostData(hnd):
+        if OLXAPI_OK != OlxAPI.PostData(hnd):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        if OLRXAPI_OK != OlxAPILib.get_data(argsGetData):
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print OlxAPI.PrintObj1LPF(hnd) + " Xnew=", argsGetData["data"]
+        print(OlxAPI.PrintObj1LPF(hnd) + " Xnew=", argsGetData["data"])
     return 0
 
 
@@ -707,7 +707,7 @@ def testGetData():
 def testOlxAPI():
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -719,12 +719,12 @@ def testOlxAPI():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
         
         #testDeleteEquipment(olrFilePath)
         #testFindObj()
@@ -740,7 +740,7 @@ def testOlxAPI():
         return 0
 
     except  OlxAPI.OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def listbranch():
@@ -750,7 +750,7 @@ def listbranch():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -762,23 +762,23 @@ def listbranch():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         targetHnd = branchSearch("CLAYTOR", 132, "NEVADA", 132, "1")
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_RLYDSP
         argsGetEquipment["hnd"] = 0    
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):            
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):            
             RGhnd = argsGetEquipment["hnd"]
             argsGetData = {}
             argsGetData["hnd"] = RGhnd
             argsGetData["token"] = RG_nBranchHnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 Branch1Hnd = argsGetData["data"]
                 if Branch1Hnd == targetHnd:
                     break
@@ -789,7 +789,7 @@ def listbranch():
         argsGetData = {}
         argsGetData["hnd"] = Branch1Hnd
         argsGetData["token"] = BR_nType
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             TypeCode1 = argsGetData["data"]
             argsGetData = {}
             argsGetData["hnd"] = Branch1Hnd
@@ -797,7 +797,7 @@ def listbranch():
         else:
             return 1
 
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             FacilityHandle = argsGetData["data"]
             argsGetData = {}
             argsGetData["hnd"] = Branch1Hnd
@@ -805,7 +805,7 @@ def listbranch():
         else:
             return 1
 
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             Bus1Hnd= argsGetData["data"]
             argsGetData = {}
             argsGetData["hnd"] = Branch1Hnd
@@ -813,7 +813,7 @@ def listbranch():
         else:
             return 1
 
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             Bus2Hnd= argsGetData["data"]
         else:
             return 1
@@ -822,7 +822,7 @@ def listbranch():
             argsGetData = {}
             argsGetData["hnd"] = FacilityHandle
             argsGetData["token"] = LN_sName
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 LineName = argsGetData["data"]
                 BusHnd = Bus1Hnd
                 BranchNext = 1
@@ -830,7 +830,7 @@ def listbranch():
                     argsGetData = {}
                     argsGetData["hnd"] = Bus2Hnd
                     argsGetData["token"] = BUS_nTapBus
-                    if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                    if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                          TapCode = argsGetData["data"]
                          if TapCode == 0:
                              break
@@ -839,12 +839,12 @@ def listbranch():
                          argsGetData = {}
                          argsGetData["hnd"] = Bus2Hnd
                          argsGetData["token"] = TC_BRANCH
-                         while (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                         while (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                              BranchHnd = argsGetData["data"]
                              argsGetData = {}
                              argsGetData["hnd"] = BranchHnd
                              argsGetData["token"] = BR_nBus2Hnd
-                             if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                             if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                                  RemoteBusHnd = argsGetData["data"]
                                  if RemoteBusHnd == BusHnd:
                                      Branch2Hnd = BranchHnd
@@ -852,7 +852,7 @@ def listbranch():
                                      argsGetData = {}
                                      argsGetData["hnd"] = BranchHnd
                                      argsGetData["token"] = BR_nType
-                                     if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                                     if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                                          TypeCode2 = argsGetData["data"]
                                          if (TypeCode2 == TC_LINE):
                                              if BranchNext == 0:
@@ -863,14 +863,14 @@ def listbranch():
                                              argsGetData = {}
                                              argsGetData["hnd"] = BranchHnd
                                              argsGetData["token"] = BR_nHandle
-                                             if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                                             if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                                                  TmpHandle = argsGetData["data"]
                                              else:
                                                  return 1
                                              argsGetData = {}
                                              argsGetData["hnd"] = TmpHandle
                                              argsGetData["token"] = LN_sName
-                                             if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                                             if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                                                  TmpLineName = argsGetData["data"]
                                              else:
                                                  return 1
@@ -885,14 +885,14 @@ def listbranch():
         List1Len = 0
         BranchHnd = c_int(0)
         OutageList1 = (c_int*20)(0)
-        while ( OLRXAPI_OK == OlxAPI.GetBusEquipment( BusHnd, c_int(TC_BRANCH), byref(BranchHnd) ) ) :
+        while ( OLXAPI_OK == OlxAPI.GetBusEquipment( BusHnd, c_int(TC_BRANCH), byref(BranchHnd) ) ) :
             if BranchHnd.value != BranchThis:
                 List1Len = List1Len + 1
                 OutageList1[List1Len] = BranchHnd
                 argsGetData = {}
                 argsGetData["hnd"] = BranchHnd.value
                 argsGetData["token"] = BR_nBus2Hnd
-                if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                     RemoteBusHnd = argsGetData["data"]
                 else:
                     return 1
@@ -900,7 +900,7 @@ def listbranch():
                 argsGetData = {}
                 argsGetData["hnd"] = BranchHnd.value
                 argsGetData["token"] = BR_nType
-                if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                     TypeCode = argsGetData["data"]
                 else:
                     return 1
@@ -928,14 +928,14 @@ def listbranch():
         List2Len = 0
         BranchHnd = c_int(0);
         OutageList2 = (c_int*20)(0)
-        while ( OLRXAPI_OK == OlxAPI.GetBusEquipment( BusHnd, c_int(TC_BRANCH), byref(BranchHnd) ) ) :
+        while ( OLXAPI_OK == OlxAPI.GetBusEquipment( BusHnd, c_int(TC_BRANCH), byref(BranchHnd) ) ) :
             if BranchHnd.value != BranchThis:
                 List2Len = List2Len + 1
                 OutageList2[List2Len] = BranchHnd
                 argsGetData = {}
                 argsGetData["hnd"] = BranchHnd.value
                 argsGetData["token"] = BR_nBus2Hnd
-                if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                     RemoteBusHnd = argsGetData["data"]
                 else:
                     return 1
@@ -943,7 +943,7 @@ def listbranch():
                 argsGetData = {}
                 argsGetData["hnd"] = BranchHnd.value
                 argsGetData["token"] = BR_nType
-                if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                     TypeCode = argsGetData["data"]
                 else:
                     return 1
@@ -964,12 +964,12 @@ def listbranch():
                 aLine = "Sub " + BusName + ": " + BranchType + " to " + BusName2 + "; Handle=" + str(BranchHnd)
                 print(aLine)
 
-        print("Found " + str(List1Len) + " branches at near end")
-        print("Found " + str(List2Len) + " branches at far end")
+        print(("Found " + str(List1Len) + " branches at near end"))
+        print(("Found " + str(List2Len) + " branches at far end"))
 
         return 0
     except  OlxAPI.OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def orphanbus():
@@ -978,7 +978,7 @@ def orphanbus():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         #olrFilePath = sys.argv[1]
         olrFilePath = 'H:\\data\\00Support&Dev\\02Developtment\\0000V15\\00Dev_V15_OLRX\\sample30_orphanbus.olr'
@@ -991,25 +991,25 @@ def orphanbus():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_BUS
         argsGetEquipment["hnd"] = 0   
         NObus = 0 
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             NObus = NObus + 1
         BusList = (c_int*(NObus))(0)  
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_BUS
         argsGetEquipment["hnd"] = 0  
         NObus = 0
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             BusList[NObus] = argsGetEquipment["hnd"]
             NObus = NObus + 1
 
@@ -1020,11 +1020,11 @@ def orphanbus():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_LINE
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = LN_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1036,7 +1036,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = LN_nBus2Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1049,11 +1049,11 @@ def orphanbus():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_SWITCH
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = SW_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1065,7 +1065,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = SW_nBus2Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1078,11 +1078,11 @@ def orphanbus():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_PS
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = PS_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1094,7 +1094,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = PS_nBus2Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1107,11 +1107,11 @@ def orphanbus():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_XFMR
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = XR_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1123,7 +1123,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = XR_nBus2Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1136,11 +1136,11 @@ def orphanbus():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_XFMR3
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = X3_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1152,7 +1152,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = X3_nBus2Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1164,7 +1164,7 @@ def orphanbus():
             argsGetData = {}
             argsGetData["hnd"] = argsGetEquipment["hnd"]
             argsGetData["token"] = X3_nBus3Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BusHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1190,7 +1190,7 @@ def orphanbus():
             print(aLine)
         return 0
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error
 
 def linez_v2():
@@ -1200,7 +1200,7 @@ def linez_v2():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -1212,12 +1212,12 @@ def linez_v2():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
         maxLines = 10000
         hndOffset = 3
         dKVMin = 0
@@ -1228,7 +1228,7 @@ def linez_v2():
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_LINE
         argsGetEquipment["hnd"] = 0   
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
             PickedHnd = argsGetEquipment["hnd"]
             Index = PickedHnd - hndOffset
             if Index >= maxLines:
@@ -1242,20 +1242,20 @@ def linez_v2():
             argsGetEquipment = {}
             argsGetEquipment["tc"] = TC_LINE
             argsGetEquipment["hnd"] = 0   
-            while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
+            while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)): 
                 PickedHnd = argsGetEquipment["hnd"]
                 if ProcessedHnd[PickedHnd-hndOffset] == 0:
                     argsGetData = {}
                     argsGetData["hnd"] = argsGetEquipment["hnd"]
                     argsGetData["token"] = LN_nBus1Hnd
-                    if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                    if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                         Bus1Hnd = argsGetData["data"]
                     else:
                         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
                     argsGetData = {}
                     argsGetData["hnd"] = Bus1Hnd
                     argsGetData["token"] = BUS_dKVnominal
-                    if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                    if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                         dKV = argsGetData["data"]
                     else:
                         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1263,21 +1263,21 @@ def linez_v2():
                         argsGetData = {}
                         argsGetData["hnd"] = Bus1Hnd
                         argsGetData["token"] = BUS_nTapBus
-                        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                             TapCode1 = argsGetData["data"]
                         else:
                             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
                         argsGetData = {}
                         argsGetData["hnd"] = argsGetEquipment["hnd"]
                         argsGetData["token"] = LN_nBus2Hnd
-                        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                             Bus2Hnd = argsGetData["data"]
                         else:
                             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
                         argsGetData = {}
                         argsGetData["hnd"] = Bus2Hnd
                         argsGetData["token"] = BUS_nTapBus
-                        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+                        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                             TapCode2 = argsGetData["data"]
                         else:
                             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1292,7 +1292,7 @@ def linez_v2():
             root.update()
             return 1 
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error  
 
 def networkutil():
@@ -1301,7 +1301,7 @@ def networkutil():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -1313,23 +1313,23 @@ def networkutil():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         targetHnd = branchSearch("CLAYTOR", 132, "NEVADA", 132, "1")
         argsGetEquipment = {}
         argsGetEquipment["tc"] = TC_RLYDSP
         argsGetEquipment["hnd"] = 0    
-        while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):            
+        while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):            
             RGhnd = argsGetEquipment["hnd"]
             argsGetData = {}
             argsGetData["hnd"] = RGhnd
             argsGetData["token"] = RG_nBranchHnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 BranchHnd = argsGetData["data"]
                 if BranchHnd == targetHnd:
                     break
@@ -1341,7 +1341,7 @@ def networkutil():
         argsGetData = {}
         argsGetData["hnd"] = BranchHnd
         argsGetData["token"] = BR_nBus1Hnd
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             nBusHnd = argsGetData["data"]
         else:
             return 1
@@ -1351,7 +1351,7 @@ def networkutil():
             argsGetData = {}
             argsGetData["hnd"] = BranchHnd
             argsGetData["token"] = BR_nBus1Hnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 nBusHnd = argsGetData["data"]  
             else:
                 return 1
@@ -1359,7 +1359,7 @@ def networkutil():
         print( sText )      
         return 0
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error 
     
 def testLN_nMuPairHnd():                    
@@ -1368,7 +1368,7 @@ def testLN_nMuPairHnd():
     """
     try:
         if len(sys.argv) == 1:
-            print "Usage: " + sys.argv[0] + " YourNetwork.olr"
+            print("Usage: " + sys.argv[0] + " YourNetwork.olr")
             return 0
         olrFilePath = sys.argv[1]
         """
@@ -1380,18 +1380,18 @@ def testLN_nMuPairHnd():
             olrFilePath = str(tkFileDialog.askopenfilename(**opts))
         """
         if not os.path.isfile(olrFilePath):
-            print "OLR file does not exit: ", olrFilePath
+            print("OLR file does not exit: ", olrFilePath)
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
-        print "File opened successfully: " + olrFilePath
+        print("File opened successfully: " + olrFilePath)
 
         targetHnd = branchSearch("GLEN LYN", 132, "TEXAS", 132, "1")
         argsGetData = {}
         argsGetData["hnd"] = targetHnd 
         argsGetData["token"] = BR_nType
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             brType = argsGetData["data"]
         else:
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1399,34 +1399,34 @@ def testLN_nMuPairHnd():
             argsGetData = {}
             argsGetData["hnd"] = targetHnd 
             argsGetData["token"] = BR_nHandle
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 itemHnd = argsGetData["data"]
             else:
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
             argsGetData = {}
             argsGetData["hnd"] = itemHnd
             argsGetData["token"] = LN_nMuPairHnd
-            if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+            if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
                 nMuHnd = argsGetData["data"]
             else:
                 return OlxAPIException(OlxAPI.ErrorString())
         return 0
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error 
 
 def testGetJournalRecord():
     argsGetEquipment = {}
     argsGetEquipment["tc"] = TC_RLYOCG
     argsGetEquipment["hnd"] = 0  # Get the first object
-    while (OLRXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         hnd = argsGetEquipment["hnd"]
-        print OlxAPI.PrintObj1LPF(hnd)
+        print(OlxAPI.PrintObj1LPF(hnd))
         JRec = OlxAPI.GetObjJournalRecord(hnd).split("\n")
-        print "Created: " + JRec[0]
-        print "Created by: " + JRec[1]
-        print "Modified: " + JRec[2]
-        print "Modified by: " + JRec[3]
+        print("Created: " + JRec[0])
+        print("Created by: " + JRec[1])
+        print("Modified: " + JRec[2])
+        print("Modified by: " + JRec[3])
     return 0
 
 def testGetRelay():                    
@@ -1451,7 +1451,7 @@ def testGetRelay():
             print "OLR file does not exit: ", olrFilePath
             return 1
 
-        if OLRXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         print "File opened successfully: " + olrFilePath
         """
@@ -1459,7 +1459,7 @@ def testGetRelay():
         argsGetData = {}
         argsGetData["hnd"] = targetHnd 
         argsGetData["token"] = BR_nRlyGrp1Hnd
-        if (OLRXAPI_OK == OlxAPILib.get_data(argsGetData)):
+        if (OLXAPI_OK == OlxAPILib.get_data(argsGetData)):
             nRGHnd = argsGetData["data"]
         else:
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
@@ -1468,21 +1468,21 @@ def testGetRelay():
         else:
             getTime = False
         hndRelay = c_int(0)
-        while OLRXAPI_OK == OlxAPI.GetRelay( nRGHnd, byref(hndRelay) ) :
-            print OlxAPI.FullRelayName( hndRelay )
+        while OLXAPI_OK == OlxAPI.GetRelay( nRGHnd, byref(hndRelay) ) :
+            print(OlxAPI.FullRelayName( hndRelay ))
             if TC_RLYDSP == OlxAPI.EquipmentType(hndRelay):
                 sx = create_string_buffer("\0",128)
-                if OLRXAPI_OK <> OlxAPI.GetData(hndRelay,DP_sParam,byref(sx)):
+                if OLXAPI_OK != OlxAPI.GetData(hndRelay,DP_sParam,byref(sx)):
                     raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-                print("Z2_Delay=" + sx.value)
+                print(("Z2_Delay=" + sx.value))
             if getTime:
                 triptime = c_double(0)
-                if OLRXAPI_OK <> OlxAPI.GetRelayTime(hndRelay, 1.0, 1, byref(triptime),byref(sx)):
+                if OLXAPI_OK != OlxAPI.GetRelayTime(hndRelay, 1.0, 1, byref(triptime),byref(sx)):
                     raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-                print("Trip time=" + str(triptime.value) + " device=" + str(sizeof.value))
+                print(("Trip time=" + str(triptime.value) + " device=" + str(sizeof.value)))
             return 0
     except  OlxAPIException as err:
-        print( "Error: {0}".format(err))
+        print(( "Error: {0}".format(err)))
         return 1        # error 
 
 def main(argv=None):
@@ -1492,17 +1492,16 @@ def main(argv=None):
     #
     dllPath = os.path.dirname(os.path.abspath(sys.argv[0])) + "\\..\\"
     if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = os.path.dirname(os.path.abspath(sys.argv[0])) + "\\..\\..\\olrxapidll\TestBenchOlrxAPI\\bin\\"
+        dllPath = os.path.dirname(os.path.abspath(sys.argv[0])) + "\\..\\olrxapidll\TestBenchOlrxAPI\\bin\\"
         #dllPath = locateASPENOlxAPI.()
         if not os.path.isfile(dllPath + "olxapi.dll") :
-            print "olxapi.dll not found"
+            print("olxapi.dll not found")
             return 1
     try:
         OlxAPI.InitOlxAPI(dllPath)
-        print "\nASPEN OlxAPI path: ", dllPath, "\nVersion:", OlxAPI.Version(), " Build: ", OlxAPI.BuildNumber(), "\n"
     #   return 0
     except OlxAPIException as err:
-        print( "OlxAPI Init Error: {0}".format(err) )
+        print(( "OlxAPI Init Error: {0}".format(err) ))
         return 1        # error:
 
     return testOlxAPI()
