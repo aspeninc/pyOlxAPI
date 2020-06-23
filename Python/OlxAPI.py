@@ -45,6 +45,14 @@ def InitOlxAPI(dllPath):
         return
     # get the module handle and create a ctypes library object
     if not os.path.isfile(dllPath + "olxapi.dll") :
+        dllPath = "C:\\Program Files (x86)\\ASPEN\\1LPFv15\\"
+    if not os.path.isfile(dllPath + "olxapi.dll") :
+        dllPath = "C:\\Program Files\\ASPEN\\1LPFv15\\"
+    if not os.path.isfile(dllPath + "olxapi.dll") :
+        dllPath = "C:\\Program Files (x86)\\ASPEN\\1LPFv14\\OlrxAPI\\"
+    if not os.path.isfile(dllPath + "olxapi.dll") :
+        dllPath = "C:\\Program Files\\ASPEN\\1LPFv14\\OlrxAPI\\"
+    if not os.path.isfile(dllPath + "olxapi.dll") :
         raise OlxAPIException("Failed to locate: " + dllPath + "olxapi.dll")
     os.environ['PATH'] = os.path.abspath(dllPath) + ";" + os.environ['PATH']
     #

@@ -3,7 +3,7 @@
 __author__ = "ASPEN Inc."
 __copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "0.2.1"
+__version__ = "0.3.1"
 __email__ = "support@aspeninc.com"
 __status__ = "In development"
 
@@ -67,7 +67,7 @@ def testExportNetwork():
         if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         print("Success")
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error
 
@@ -104,7 +104,7 @@ def testExportRelay():
         if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString()) 
         print("Success")
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error
 
@@ -205,7 +205,7 @@ def testGetDataMupair():
                     print(( "MU pair " + str(hndPair) + ":" ))
                     print(( "  " + OlxAPI.FullBranchName(hndLine1) ))
                     print(( "  " + OlxAPI.FullBranchName(hndLine2) ))
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error
 
@@ -372,9 +372,9 @@ def testFaultSimulation():
         print(sObj)
         if "NEVADA" in sObj:
             print("\n>>>>>>Bus fault at: " + sObj)
-            run_busFault(busHnd)
+            OlxAPILib.run_busFault(busHnd)
             #print "\n>>>>>>Test bus fault SEA"
-            #run_steppedEvent(busHnd)
+            #OlxAPILib.run_steppedEvent(busHnd)
     return 0
 
 def testBoundaryEquivalent(OlrFileName):
@@ -731,7 +731,7 @@ def testOlxAPI():
         #testBoundaryEquivalent(olrFilePath)
         #testDoBreakerRating()
         testGetData()
-        #testFaultSimulation()
+        testFaultSimulation()
         #testOlxAPIComputeRelayTime()
         #testOlxAPI.MakeOutageList()
         #testOlxAPI.GetSetObjTagsMemo()
@@ -1189,7 +1189,7 @@ def orphanbus():
             aLine = "Found " + str(nCount) + " no orphan bus(s) in this network"
             print(aLine)
         return 0
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error
 
@@ -1291,7 +1291,7 @@ def linez_v2():
         else:
             root.update()
             return 1 
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error  
 
@@ -1358,7 +1358,7 @@ def networkutil():
             sText = sText + " " + OlxAPI.FullBusName(nBusHnd)  
         print( sText )      
         return 0
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error 
     
@@ -1411,7 +1411,7 @@ def testLN_nMuPairHnd():
             else:
                 return OlxAPIException(OlxAPI.ErrorString())
         return 0
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error 
 
@@ -1481,7 +1481,7 @@ def testGetRelay():
                     raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
                 print(("Trip time=" + str(triptime.value) + " device=" + str(sizeof.value)))
             return 0
-    except  OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "Error: {0}".format(err)))
         return 1        # error 
 
@@ -1490,17 +1490,10 @@ def main(argv=None):
     # IMPORTANT: Successfull initialization is required before any 
     #            other OlxAPI call can be executed.
     #
-    dllPath = os.path.dirname(os.path.abspath(sys.argv[0])) + "\\..\\"
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = os.path.dirname(os.path.abspath(sys.argv[0])) + "\\..\\olrxapidll\TestBenchOlrxAPI\\bin\\"
-        #dllPath = locateASPENOlxAPI.()
-        if not os.path.isfile(dllPath + "olxapi.dll") :
-            print("olxapi.dll not found")
-            return 1
     try:
-        OlxAPI.InitOlxAPI(dllPath)
+        OlxAPI.InitOlxAPI(OLXAPI_DLL_PATH)
     #   return 0
-    except OlxAPIException as err:
+    except OlxAPI.OlxAPIException as err:
         print(( "OlxAPI Init Error: {0}".format(err) ))
         return 1        # error:
 
