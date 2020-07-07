@@ -368,9 +368,9 @@ def testFaultSimulation():
     argsGetEquipment["hnd"] = 0
     while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
         busHnd = argsGetEquipment["hnd"]
-        sObj = OlxAPI.PrintObj1LPF(busHnd)
+        sObj = str(OlxAPI.PrintObj1LPF(busHnd))
         print(sObj)
-        if "NEVADA" in sObj:
+        if sObj.find("NEVADA") > -1:
             print("\n>>>>>>Bus fault at: " + sObj)
             OlxAPILib.run_busFault(busHnd)
             #print "\n>>>>>>Test bus fault SEA"
