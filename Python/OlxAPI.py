@@ -2,11 +2,11 @@
 
 """
 __author__ = "ASPEN"
-__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2020, Advanced Systems for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "15.1.1"
+__version__ = "15.3.1"
 __email__ = "support@aspeninc.com"
-__status__ = "Experimental"
+__status__ = "Pre-release"
 
 from ctypes import *
 import os.path
@@ -68,7 +68,8 @@ def InitOlxAPI(dllPath):
     if errorAPIInit != "No Error":                # This string Must match the c++ DLL code
         raise OlxAPIException(errorAPIInit)
     #
-    print ( "\tOlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + dllPath )
+    print ( "\tOlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + dllPath)
+    return dllPath
 
 # API function prototypes
 def Version():
@@ -402,29 +403,29 @@ def GetLogicScheme( hndRlyGroup, hndScheme ):
     ASPENOlxAPIDLL.OlxAPIGetLogicScheme.argtypes = [c_int, c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetLogicScheme( hndRlyGroup, hndScheme );
 
-def GetRelayTime( hndRelay, mult, ignore_signalonly, trip, device ):
-    """Return operating time for a fuse, an overcurrent relay
-    (phase or ground), or a distance relay (phase or ground)
+def GetRelayTime( hndRelay, mult, consider_signalonly, trip, device ):
+    """Retrieve operating time for a fuse, an overcurrent relay
+    (phase or ground), recloser (phase or ground), or a distance relay (phase or ground)
     in fault simulation result.
 
     Args:
         hndRelay (c_int): [in] relay object handle
         mult (c_double) : [in] relay current multiplying factor
-        ignore_signalonly: [in] Consider relay element signal-only flag
+        consider_signalonly: [in] Consider relay element signal-only flag
                            1 - Yes; 0 - No
         trip (byref(c_double)) : [out] relay operating time in seconds
-        device (c_char_p): [out] relay operation code:
-                           NOP  No operation
-                           ZGn  Ground distance zone n  tripped
-                           ZPn  Phase distance zone n  tripped
-                           Ix   Overcurrent relay operating quantity: Ia, Ib, Ic, Io, I2, 3Io, 3I2
-                           TOC  Time overcurrent element tripped
+        device (c_char_p): [out] relay operation code. Required buffer size 128 bytes.
+                     NOP  No operation.
+                     ZGn  Ground distance zone n tripped.
+                     ZPn  Phase distance zone n tripped.
+                     TOC=value Time overcurrent element operating quantity in secondary amps
+                     IOC=value Instantaneous overcurrent element operating quantity in secondary amps
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetRelayTime.argtypes = [c_int, c_double, c_void_p, c_char_p, c_int]
-    return ASPENOlxAPIDLL.OlxAPIGetRelayTime( hndRelay, mult, trip, device, ignore_signalonly )
+    return ASPENOlxAPIDLL.OlxAPIGetRelayTime( hndRelay, mult, trip, device, consider_signalonly )
 
 def Run1LPFCommand(Params):
     """Run OneLiner command
@@ -688,18 +689,45 @@ def Run1LPFCommand(Params):
                               where the current OLR file is located.
                               If no attribute is specified, the File | Save command will be executed.
 
+            Command SAVEFLTSPEC - Save desc and spec of faults in the result buffer to XML or CSV files
+            Attributes:
+                REPORTPATHNAME= (*)Output file pathname
+                APPEND= [0]: overwrite existing file; 1: Append to existing file; 
+                FORMAT= output file format [0]: XML; 1: CSV
+                CLEARPREV= Clear previous results flag to be recorded in the XML output
+                            [0]: no; 1: yes; 
+                RANGE= Comma delimited list of fault index numbers and ranges(e.g. 1,3,5-10)
+                        Default: save all faults in the results buffer
+
+            Command SIMULATEFAULT - Run OneLiner command FAULTS  | BATCH COMMAND & FAULT SPEC FILE | EXECUTE COMMAND
+            Attributes: 
+                <FAULT> The <SIMULATEFAULT> XML node must contain one or more children nodes <FAULT>, 
+                         one for each fault case to be simulated. 
+                <FLTSPEC>  Each of the <FAULT> nodes can include up to 40 fault specifications to be 
+                           simulated in the case. Fault specification string in the format described in 
+                           OneLiner’s user manual APPENDIX I:  FAULT SPECIFICATION FILE 
+                           must be included as the text of children nodes <FLTSPEC>. 
+                FLTSPCVS= Alternatively, a tab-delimited list of all the fault spec strings can be entered as 
+                          the attribute "FLTSPCVS" in the <FAULT> node. 
+                CLEARPREV= Clear previous result buffer flag [0]: no; 1: yes; 
+            Returns:
+                OLRXAPI_FAILURE: Failure
+                NOfault        : Total number of faults in the solution buffer
+            Remark:
+                When NOfault is not the expected value, call OlxAPIErrorString() for details of simulation error
+
     Returns:
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIRun1LPFCommand.argstype = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPIRun1LPFCommand(Params)
+    return ASPENOlxAPIDLL.OlxAPIRun1LPFCommand(Params.encode('UTF-8'))
 
 def DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
     """Run stepped-event simulation
 
     Remarks:
-        After successful call of OlrxAPIDoSteppedEvent() you must call
+        After successful call of OlxAPIDoSteppedEvent() you must call
         function GetSteppedEvent() to retrieve detailed result of
         each step in the simulation.
 
@@ -757,7 +785,7 @@ def GetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest 
         OLRXAPI_FAILURE: Failure
         OLRXAPI_OK     : Success
     """
-    OlrxAPIGetSteppedEvent.argstype = [c_int,c_void_p,c_void_p,c_void_p,c_char_p,c_char_p]
+    ASPENOlxAPIDLL.OlxAPIGetSteppedEvent.argstype = [c_int,c_void_p,c_void_p,c_void_p,c_char_p,c_char_p]
     return ASPENOlxAPIDLL.OlxAPIGetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest )
 
 def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
@@ -795,7 +823,7 @@ def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
     """
     ASPENOlxAPIDLL.OlxAPIDoBreakerRating.argtypes = [POINTER(c_int),c_double,c_double,c_int,c_char_p,c_char_p,c_char_p]
     return ASPENOlxAPIDLL.OlxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
-                            ReportTXT, ReportCSV, ConfigFile)
+                            ReportTXT.encode('UTF-8'), ReportCSV.encode('UTF-8'), ConfigFile.encode('UTF-8'))
 def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
     """Create boundary equivalent network
 
@@ -815,7 +843,7 @@ def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
         OLRXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent.argtypes = [c_char_p,POINTER(c_int),c_double*3]
-    return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent(EquFileName, BusList, FltOpt)
+    return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent(EquFileName.encode('UTF-8'), BusList, FltOpt)
 def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
     """Simulate one or more faults
 
@@ -889,8 +917,27 @@ def PickFault( index, tiers ):
     return ASPENOlxAPIDLL.OlxAPIPickFault( index, tiers)
 
 # These API functions return string
+def FaultDescriptionEx(index,flag):
+    """Retrieves description and fltspec strings of a fault in the simulation results buffer.
+
+    Call this function with index=0 to get description of the
+    current fault simulation.
+
+    Args:
+        index (c_int): Index of fault simulation.
+        flag  (c_int): Output flag
+                       [0] Fautl description string only
+                       1   Plus FLTSPCVS on the last line
+                       2   Plus FLTOPTSTR on the last line
+                       See SIMULATEFAULT for details of FLTSPCVS and FLTOPTSTR strings
+    Returns:
+        string (c_char_p)
+    """
+    ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx.restype = c_char_p
+    ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx.argstype = [c_int,c_int]
+    return ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx(index,flag).decode("UTF-8")
 def FaultDescription(index):
-    """Retrieves description string of a fault in the simulation results.
+    """Retrieves description and fltspec strings of a fault in the simulation results buffer.
 
     Call this function with index=0 to get description of the
     current fault simulation.
@@ -901,9 +948,7 @@ def FaultDescription(index):
     Returns:
         string (c_char_p)
     """
-    ASPENOlxAPIDLL.OlxAPIFaultDescription.restype = c_char_p
-    ASPENOlxAPIDLL.OlxAPIFaultDescription.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFaultDescription(index).decode("UTF-8")
+    return FaultDescriptionEx(index, 0)
 
 def ErrorString():
     """Retrieves error message string

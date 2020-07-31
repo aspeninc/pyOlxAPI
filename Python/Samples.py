@@ -373,8 +373,8 @@ def testFaultSimulation():
         if sObj.find("NEVADA") > -1:
             print("\n>>>>>>Bus fault at: " + sObj)
             OlxAPILib.run_busFault(busHnd)
-            #print "\n>>>>>>Test bus fault SEA"
-            #OlxAPILib.run_steppedEvent(busHnd)
+            print ("\n>>>>>>Test bus fault SEA")
+            OlxAPILib.run_steppedEvent(busHnd)
     return 0
 
 def testBoundaryEquivalent(OlrFileName):
@@ -730,12 +730,12 @@ def testOlxAPI():
         #testFindObj()
         #testBoundaryEquivalent(olrFilePath)
         #testDoBreakerRating()
-        testGetData()
+        #testGetData()
         testFaultSimulation()
         #testOlxAPIComputeRelayTime()
         #testOlxAPI.MakeOutageList()
         #testOlxAPI.GetSetObjTagsMemo()
-        # testDoRelayCoordination()
+        #testDoRelayCoordination()
         #testSaveDataFile(olrFilePath)
         return 0
 
