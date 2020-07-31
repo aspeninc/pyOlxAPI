@@ -1,15 +1,14 @@
 ﻿"""
-ASPEN OlrxAPI Constants
+ASPEN OlxAPI Constants
 """
 __author__ = "ASPEN Inc."
-__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
-__license__ = "All rights reserved"
-__version__ = "1.1.1"
+__copyright__ = "Copyright 2020, Advanced Systems for Power Engineering (ASPEN), Inc"
+__version__ = "1.2.0"
 __email__ = "support@aspeninc.com"
-__status__ = "Experimental"
+__status__ = "Pre-release"
 
 # olxapi.dll folder pathname
-OLXAPI_DLL_PATH    = "C:\\Program Files (x86)\\ASPEN\\1LPFv15\\"               
+OLXAPI_DLL_PATH    = ""  
 
 import argparse
 PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
@@ -665,6 +664,8 @@ LS_nSignalOnly    = 301
 LS_nInService     = 302
 LS_nRlyGrpHnd     = 303
 
+OLRXAPI_FAILURE = 0
+OLRXAPI_OK = 1
 OLXAPI_FAILURE = 0
 OLXAPI_OK = 1
 
