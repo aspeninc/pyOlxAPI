@@ -1,0 +1,10 @@
+Electrode config,,0: VCB  1: VCBB  2: HCB  3: VOA  4: HOA,,,,,,,,,
+Fault Clearing,,FUSE: Use fuse curve,,,FIXED: Use fixed duration,,,FASTEST: Use fastest trip time of device in vicinity,,,
+Fault clearing option,,For clearing time option FASTEST: NO of tiers,,,,,,,,,
+,,For clearing time option FIXED: Fixed delay,,,,,,,,,
+,,For clearing Time Option FUSE: fuse LibraryName:CurveName,,,,,,,,,
+No.,Bus Name,kV,Electrode config,Enclosure H (in.),Enclosure W (in.),Enclosure D (in.),Conductor Gap (mm),Working Distance (inches),Breaker inerrupting time (cycles),Fault Clearing,Fault clearing option
+13,HANCOCK,13.8,0,45,30,5,152,36,5,FIXED,0.2
+11,ROANOKE,13.8,1,45,30,5,152,36,5,FUSE,ABB:CLE1-15-030
+0 ,XALO_T1,15,1,45,30,5,152,36,5,FUSE,ABB:CLE1-15-030
+

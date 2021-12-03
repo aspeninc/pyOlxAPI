@@ -1,11 +1,9 @@
-This folder contains OlxAPI Python apps
+This folder contains Python OlxAPI apps
 
-OlxAPI.py       Python functions wrapper
-OlxAPIConst.py  Constants
-OlxAPILib.py    Library of useful re-usable routines
-Sample.py       Sample apps
+OlxAPI.py       Python functions wrapper for OlxAPI.dll
+OlxAPIConst.py  OlxAPI constants
+OlxAPILib.py    Library of OLR file data and other routines
+AppUtils.py     Library of useful re-usable routines
+Samples.py      Collection of code snippets with demo usage of OlxAPI function calls
 
-***** Sample code shipped with OneLiner V14. Deprecated. For transition to OneLiner V15 only*****
-pyOlrxAPI.py       Python functions wrapper
-pyOlrxAPIConst.py  Constants
-pyOlrxAPILib.py    Library of useful re-usable routines
+Plus various additional apps in their own subdirectory.

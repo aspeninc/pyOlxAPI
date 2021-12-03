@@ -1,55 +1,77 @@
 ﻿"""
-Demo usage of ASPEN OlxAPI in Python.
-common utils
+Common ASPEN OlxAPI Python routines.
 """
 from __future__ import print_function
 
-__author__ = "ASPEN Inc."
-__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
-__license__ = "All rights reserved"
-__version__ = "0.2.1"
-__email__ = "support@aspeninc.com"
-__status__ = "In development"
-
-from ctypes import *
-from OlxAPIConst import *
+__author__    = "ASPEN Inc."
+__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__license__   = "All rights reserved"
+__email__     = "support@aspeninc.com"
+__status__    = "Release"
+__version__   = "1.3.1"
+#
+import sys,os
 import OlxAPI
-import math
-import os,time
-from datetime import datetime
-import subprocess
-# Tkinter python 2|3
-try:
-    import tkinter as tk
-    import tkinter.filedialog as tkf
-    import tkinter.messagebox as tkm
-    from tkinter import ttk
-except:
-    import Tkinter as tk
-    import tkFileDialog as tkf
-    import tkMessageBox as tkm
-    import ttk
+from OlxAPIConst import *
+from ctypes import *
+import AppUtils
 
 #
-def open_olrFile(olrFile,readonly):
+dictCode_BR_sID   = {TC_LINE:LN_sID  , TC_SWITCH:SW_sID  , TC_PS: PS_sID  , TC_XFMR:XR_sID  , TC_XFMR3:X3_sID  , TC_SCAP:SC_sID   }
+dictCode_BR_sName = {TC_LINE:LN_sName, TC_SWITCH:SW_sName, TC_PS: PS_sName, TC_XFMR:XR_sName, TC_XFMR3:X3_sName, TC_SCAP:SC_sName }
+dictCode_BR_sC    = {TC_LINE:"L"     , TC_SWITCH:"W"     , TC_PS: "P"     , TC_XFMR:"T"     , TC_XFMR3:"X"     , TC_SCAP:"S" }
+dictCode_BR_RAT   = {TC_LINE:1       , TC_SWITCH:7       , TC_PS: 3       , TC_XFMR:2       , TC_XFMR3:10}
+dictCode_BR_nBus  = {TC_LINE:[LN_nBus1Hnd,LN_nBus2Hnd],\
+                     TC_SWITCH:[SW_nBus1Hnd,SW_nBus2Hnd],\
+                     TC_PS: [PS_nBus1Hnd,PS_nBus2Hnd], \
+                     TC_SCAP:[SC_nBus1Hnd,SC_nBus2Hnd],\
+                     TC_XFMR:[XR_nBus1Hnd,XR_nBus2Hnd],\
+                     TC_XFMR3 :[X3_nBus1Hnd,X3_nBus2Hnd,X3_nBus3Hnd]}
+dictCode_RLY_sID  = {TC_RLYOCG:OG_sID  , TC_RLYOCP:OP_sID  , TC_RLYDSG: DG_sID  , TC_RLYDSP:DP_sID  , TC_FUSE:FS_sID }
+dictCode_TC_Name  = {TC_BUS:'BUS' ,TC_LINE:'LINE' , TC_SWITCH:'SWITCH' , TC_PS: 'PHASE SHIFTER' ,\
+                    TC_XFMR:'TRANSFORMER 2 WINDINGS' , TC_XFMR3:'TRANSFORMER 3 WINDINGS' , TC_SCAP:'SERIE CAPACITOR/REACTOR',\
+                    TC_RLYGROUP:'RELAY GROUP', TC_GEN:'GENERATOR',TC_GENUNIT:'GENERATOR UNIT' }
+#
+dictFltConn       = {"3PH":[1,0,0,0], "2LG_BC":[0,1,0,0],"2LG_CA":[0,2,0,0],"2LG_AB":[0,3,0,0],"1LG_A":[0,0,1,0],"1LG_B":[0,0,2,0],\
+                     "1LG_C":[0,0,3,0],"LL_BC":[0,0,0,1],"LL_CA":[0,0,0,2],"LL_AB":[0,0,0,3]}
+
+dictCode_PRSys = {'BASEMVA':SY_dBaseMVA,'BUS':SY_nNObus,'GEN':SY_nNOgen ,'LOAD':SY_nNOload ,'SHUNT':SY_nNOshunt,'LINE': SY_nNOline ,
+                  'SERIESRC':SY_nNOseriescap ,'XFMR':SY_nNOxfmr ,'XFMR3':SY_nNOxfmr3 ,'OPS':SY_nNOps ,'MULINE':SY_nNOmutual ,'SWITCH': SY_nNOswitch ,
+            'LOADUNIT': SY_nNOloadUnit,'SVD':SY_nNOsvd ,'OC PHASE RELAY':SY_nNOrlyOCP ,'OC GROUND RELAY':SY_nNOrlyOCG ,'DS PHASE RELAY':SY_nNOrlyDSP ,'DS GROUND RELAY':SY_nNOrlyDSG ,
+            'D RELAY':SY_nNOrlyD ,'V RELAY': SY_nNOrlyV ,'FUSE':SY_nNOfuse ,'GROUND RECLOSER':SY_nNOrecloserG , 'PHASE: RECLOSER':SY_nNOrecloserP ,
+            'SHUNTUNIT':SY_nNOshuntUnit ,'CCGEN':SY_nNOccgen ,'BREAKER':SY_nNObreaker ,'SCHEME':SY_nNOscheme ,'IED': SY_nNOIED}
+#
+def open_olrFile(olrFile,dllPath='',readonly=1,prt=True):
     """
     Open OLR file in
         olrFile = (str) OLR file
+        dllPath = default
     Args:
         readonly (int): open in read-only mode. 1-true; 0-false
     """
+    #check file
+    AppUtils.checkFileSelected(olrFile,'OLR file path')
     # load dll
-    OlxAPI.InitOlxAPI(OLXAPI_DLL_PATH)
+    OlxAPI.InitOlxAPI(dllPath,prt)
     #
-    olrFile1 = olrFile
-    if not (olrFile.upper()).endswith(".OLR"):
-        olrFile1 += ".OLR"
-    #
-    if OLXAPI_OK == OlxAPI.LoadDataFile(olrFile1,readonly):
-         print("\tFile opened successfully: " + str(olrFile1))
+    val = OlxAPI.LoadDataFile(olrFile,readonly)
+    if OLXAPI_OK == val:
+        if prt:
+            print( "File opened successfully: " + olrFile)
+    elif OLXAPI_DATAFILEANOMALIES==val:
+        if prt:
+            print( "File opened successfully: " + olrFile)
+            print(OlxAPI.ErrorString())
     else:
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+#
+def open_olrFile_1(dllPath,olrFile,readonly=1,prt=True):
+    """
+    This function is deprecated
+    """
+    open_olrFile(olrFile,dllPath=dllPath,readonly=readonly,prt=prt)
 
+#
 def get_equipment(args):
     """Get OLR network object handle
     """
@@ -67,7 +89,7 @@ def set_data(args):
     hnd = args["hnd"]
     vt = token//100
     if vt == VT_STRING:
-        c_data = c_char_p(args["data"])
+        c_data = c_char_p(OlxAPI.encode3(args["data"]))
     elif vt == VT_DOUBLE:
         c_data =c_double(args["data"])
     elif vt == VT_INTEGER:
@@ -89,7 +111,7 @@ def post_data(args):
     """
     return OlxAPI.PostData(c_int(args["hnd"]))
 
-c_GetDataBuf = create_string_buffer(b'\000' * 10*1024*1024)    # 10 KB buffer for string data
+c_GetDataBuf = create_string_buffer(b'\000' * 10*1024)    # 10 KB buffer for string data
 c_GetDataBuf_double = c_double(0)
 c_GetDataBuf_int = c_int(0)
 def get_data(args):
@@ -104,7 +126,7 @@ def get_data(args):
     dataBuf = make_GetDataBuf( c_token, data )
     ret = OlxAPI.GetData(c_hnd, c_token, byref(dataBuf))
     if OLXAPI_OK == ret:
-        args["data"] = process_GetDataBuf(dataBuf,c_token,c_hnd)
+        args["data"] = process_GetDataBuf(dataBuf,c_token.value,c_hnd)
     return ret
 
 def make_GetDataBuf(token,data):
@@ -135,63 +157,68 @@ def make_GetDataBuf(token,data):
             pass
         return c_GetDataBuf
 
-def process_GetDataBuf(buf,token,hnd):
+def process_GetDataBuf(buf,tokenV,hnd):
     """Convert GetData binary data buffer into Python object of correct type
     """
-    vt = token.value//100
+    vt = tokenV//100
     if vt == VT_STRING:
-        return buf.value #
-    elif vt == VT_DOUBLE:
-        return buf.value
-    elif vt == VT_INTEGER:
+        return (buf.value).decode("UTF-8")
+    elif vt in [VT_DOUBLE , VT_INTEGER]:
         return buf.value
     else:
         array = []
         tc = OlxAPI.EquipmentType(hnd)
-        if tc == TC_BREAKER and (token.value == BK_vnG1DevHnd or \
-            token.value == BK_vnG2DevHnd or \
-            token.value == BK_vnG1OutageHnd or \
-            token.value == BK_vnG2OutageHnd):
+        if tc == TC_BREAKER and tokenV in [BK_vnG1DevHnd,BK_vnG2DevHnd,BK_vnG1OutageHnd,BK_vnG2OutageHnd]:
             val = cast(buf, POINTER(c_int*MXSBKF)).contents  # int array of size MXSBKF
             for ii in range(0,MXSBKF-1):
                 array.append(val[ii])
                 if array[ii] == 0:
                     break
-        elif (tc == TC_SVD and (token.value == SV_vnNoStep)):
+        #
+        elif (tc == TC_SVD and tokenV == SV_vnNoStep):
             val = cast(buf, POINTER(c_int*8)).contents  # int array of size 8
             for ii in range(0,7):
                 array.append(val[ii])
-        elif (tc == TC_RLYDSP and (token.value == DP_vParams or token.value == DP_vParamLabels)) or \
-             (tc == TC_RLYDSG and (token.value == DG_vParams or token.value == DG_vParamLabels)):
+        elif (tc == TC_RLYDSP and tokenV in [DP_vParams,DP_vParamLabels]) or \
+             (tc == TC_RLYDSG and tokenV in [DG_vParams,DG_vParamLabels]):
             # String with tab delimited fields
-            return (cast(buf, c_char_p).value).split("\t")
+            return ((cast(buf, c_char_p).value).decode("UTF-8")).split("\t")
+        #
         else:
-            if tc == TC_GENUNIT and (token.value == GU_vdR or token.value == GU_vdX):
+            if tc == TC_GENUNIT and tokenV in [GU_vdR,GU_vdX]:
                 count = 5
-            elif tc == TC_LOADUNIT and (token.value == LU_vdMW or token.value == LU_vdMVAR):
+            elif tc == TC_LOADUNIT and tokenV in [LU_vdMW,LU_vdMVAR] :
                 count = 3
-            elif tc == TC_SVD and (token.value == SV_vdBinc or token.value == SV_vdB0inc):
+            elif tc == TC_SVD and tokenV in [SV_vdBinc,SV_vdB0inc]:
                 count = 3
-            elif tc == TC_LINE and token.value == LN_vdRating:
+            elif tc == TC_LINE and tokenV == LN_vdRating:
                 count = 4
-            elif tc == TC_RLYGROUP and token.value == RG_vdRecloseInt:
+            elif tc == TC_RLYGROUP and tokenV == RG_vdRecloseInt:
                 count = 3
-            elif tc == TC_RLYOCG and token.value == OG_vdDirSetting:
-                count = 2
-            elif tc == TC_RLYOCP and token.value == OP_vdDirSetting:
-                count = 2
-            elif tc == TC_RLYDSG and token.value == DG_vdParams:
+            elif tc == TC_RLYOCG and tokenV == OG_vdDirSetting:
+                count = 8
+            elif tc == TC_RLYOCG and tokenV in [OG_vdDTPickup,OG_vdDTDelay]:
+                count = 5
+            elif tc == TC_RLYOCP and tokenV == OP_vdDirSetting:
+                count = 8
+            elif tc == TC_RLYOCP and tokenV in [OP_vdDTPickup,OP_vdDTDelay]:
+                count = 5
+            elif tc == TC_RLYDSG and tokenV == DG_vdParams:
                 count = MXDSPARAMS
-            elif tc == TC_RLYDSG and (token.value == DG_vdDelay or token.value == DG_vdReach or token.value == DG_vdReach1):
+            elif tc == TC_RLYDSG and tokenV in [DG_vdDelay,DG_vdReach,DG_vdReach1]:
                 count = MXZONE
-            elif tc == TC_RLYDSP and token.value == DP_vParams:
+            elif tc == TC_RLYDSP and tokenV == DP_vParams:
                 count = MXDSPARAMS
-            elif tc == TC_RLYDSP and (token.value == DP_vdDelay or token.value == DP_vdReach or token.value == DP_vdReach1):
+            elif tc == TC_RLYDSP and tokenV in[DP_vdDelay,DP_vdReach,DP_vdReach1]:
                 count = MXZONE
-            elif tc == TC_CCGEN and (token.value == CC_vdV or token.value == CC_vdI or token.value == CC_vdAng):
+            elif tc == TC_CCGEN and tokenV in [CC_vdV,CC_vdI,CC_vdAng]:
                 count = MAXCCV
-            elif tc == TC_BREAKER and (token.value == BK_vdRecloseInt1 or token.value == BK_vdRecloseInt2):
+            elif tc == TC_BREAKER and tokenV in [BK_vdRecloseInt1,BK_vdRecloseInt2]:
                 count = 3
+            elif tc == TC_MU and tokenV in [MU_vdX,MU_vdR,MU_vdFrom1,MU_vdFrom2,MU_vdTo1,MU_vdTo2]:
+                count = 5
+            else:
+                count = MXDSPARAMS
             val = cast(buf, POINTER(c_double*count)).contents  # double array of size count
             for v in val:
                 array.append(v)
@@ -291,7 +318,7 @@ def run_steppedEvent(busHnd):
     """Run stepped-event simulation on a bus
     """
     hnd = c_int(busHnd)
-    runOpt = (c_int*5)(1,1,1,1,1)   # OCG, OCP, DSG, DSP, SCHEME
+    runOpt = (c_int*7)(1,1,1,1,1,1,1)   # OCG, OCP, DSG, DSP, SCHEME, DIFF, VRELAY
     fltOpt = (c_double*64)(0)
     fltOpt[0] = 1       #    Fault connection code
                         #    1=3LG
@@ -311,21 +338,6 @@ def run_steppedEvent(busHnd):
     noTiers = c_int(5)
     if OLXAPI_FAILURE == OlxAPI.DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
         raise OlxAPI.Exception(OlxAPI.ErrorString())
-    # Call GetSteppedEvent with 0 to get total number of events simulated
-    dTime = c_double(0)
-    dCurrent = c_double(0)
-    nUserEvent = c_int(0)
-    szEventDesc = create_string_buffer(b'\000' * 512 * 4)     # 4*512 bytes buffer for event description
-    szFaultDest = create_string_buffer(b'\000' * 512 * 50)    # 50*512 bytes buffer for fault description
-    nSteps = OlxAPI.GetSteppedEvent( c_int(0), byref(dTime), byref(dCurrent),
-                                               byref(nUserEvent), szEventDesc, szFaultDest )
-    print ("Stepped-event simulation completed successfully with ", nSteps-1, " events")
-    for ii in range(1, nSteps):
-        OlxAPI.GetSteppedEvent( c_int(ii), byref(dTime), byref(dCurrent),
-                                          byref(nUserEvent), szEventDesc, szFaultDest )
-        print ("Time = ", dTime.value, " Current= ", dCurrent.value)
-        print (cast(szFaultDest, c_char_p).value)
-        print (cast(szEventDesc, c_char_p).value)
 
 def branchSearch( bsBusName1, bsKV1, bsBusName2, bsKV2, sCKID ):
     hnd1    = OlxAPI.FindBus( bsBusName1, bsKV1 )
@@ -448,8 +460,10 @@ def compuOneLiner(nLineHnd, ProcessedHnd, hndOffset):
     else:
         BusHndList[0] = Bus1Hnd
         BusHndList[1] = Bus2Hnd
-
-    aLine1 = OlxAPI.FullBusName(Bus1Hnd) + " - " + OlxAPI.FullBusName(Bus2Hnd) + ": Z=" + printImpedance(dR,dX,dKV) + " Zo=" + printImpedance(dR0,dX0,dKV) + " L=" + str(dLength)
+    #
+    baseMVA = getParaSys(cod=SY_dBaseMVA)
+    aLine1 = OlxAPI.FullBusName(Bus1Hnd) + " - " + OlxAPI.FullBusName(Bus2Hnd) +\
+             ": Z=" + printImpedance(dR,dX,dKV,baseMVA) + " Zo=" + printImpedance(dR0,dX0,dKV,baseMVA) + " L=" + str(dLength)
     ProcessedHnd[nLineHnd-hndOffset] = 1
 
     # find tap segments on Bus1 side
@@ -504,7 +518,8 @@ def compuOneLiner(nLineHnd, ProcessedHnd, hndOffset):
         dX  = dX  + dXn
         dR0 = dR0 + dR0n
         dX0 = dX0 + dX0n
-        aLine = OlxAPI.FullBusName(BusHnd) + " - " + OlxAPI.FullBusName(BusFarHnd) + ": Z=" + printImpedance(dRn,dXn,dKV) + " Zo=" + printImpedance(dR0n,dX0n,dKV) + " L=" + str(dL)
+        aLine = OlxAPI.FullBusName(BusHnd) + " - " + OlxAPI.FullBusName(BusFarHnd) +\
+                ": Z=" + printImpedance(dRn,dXn,dKV,baseMVA) + " Zo=" + printImpedance(dR0n,dX0n,dKV,baseMVA) + " L=" + str(dL)
         print("Segment: " + aLine)
         ProcessedHnd[LineHnd-hndOffset] = 1
         BusHndList[BusListCount] = BusHnd
@@ -565,7 +580,8 @@ def compuOneLiner(nLineHnd, ProcessedHnd, hndOffset):
         dX  = dX  + dXn
         dR0 = dR0 + dR0n
         dX0 = dX0 + dX0n
-        aLine = OlxAPI.FullBusName(BusHnd) + " - " + OlxAPI.FullBusName(BusFarHnd) + ": Z=" + printImpedance(dRn,dXn,dKV) + " Zo=" + printImpedance(dR0n,dX0n,dKV) + " L=" + str(dL)
+        aLine = OlxAPI.FullBusName(BusHnd) + " - " + OlxAPI.FullBusName(BusFarHnd) +\
+                ": Z=" + printImpedance(dRn,dXn,dKV,baseMVA) + " Zo=" + printImpedance(dR0n,dX0n,dKV,baseMVA) + " L=" + str(dL)
         print("Segment: " + aLine)
         ProcessedHnd[LineHnd-hndOffset] = 1
         BusHndList[BusListCount] = BusHnd
@@ -603,7 +619,8 @@ def compuOneLiner(nLineHnd, ProcessedHnd, hndOffset):
                 break
 
         if nflg == 1:
-            aLine1 = OlxAPI.FullBusName(busHndList[0]) + " - " + OlxAPI.FullBusName(busHndList[1]) + ": Z=" + printImpedance(dR,dX,dKV) + " Zo=" + printImpedance(dR0,dX0,dKV) + " L=" + str(dLength)
+            aLine1 = OlxAPI.FullBusName(busHndList[0]) + " - " + OlxAPI.FullBusName(busHndList[1]) +\
+            ": Z=" + printImpedance(dR,dX,dKV,baseMVA) + " Zo=" + printImpedance(dR0,dX0,dKV,baseMVA) + " L=" + str(dLength)
     print("Line: " + aLine1)
 
 def FindTapSegmentAtBus( BusHnd, ProcessedHnd, hndOffset, sName ):
@@ -659,19 +676,7 @@ def FindTapSegmentAtBus( BusHnd, ProcessedHnd, hndOffset, sName ):
             continue
         FindTapSegmentAtBus = LineHnd
     return FindTapSegmentAtBus
-
-def printImpedance(dR, dX, dKV):
-    dMag = math.sqrt(dR*dR + dX*dX)*dKV*dKV/100.0
-    if dR != 0.0:
-        dAng = math.atan(dX/dR)*180/3.14159
-    else:
-        if dX > 0:
-            dAng = 90
-        else:
-            dAng = -90
-    aLine = "{0:.5f}".format(dR) + "+j" + "{0:.5f}".format(dX) + "pu(" + "{0:.2f}".format(dMag) + "@" + "{0:.2f}".format(dAng) + "Ohm)"
-    return aLine
-
+#
 def GetRemoteTerminals( BranchHnd, TermsHnd ):
     """
     Purpose: Find all remote ends of a line. All taps are ignored. Close switches are included
@@ -796,18 +801,44 @@ def FindOppositeBranch( NearEndBrHnd, OppositeBrList, TempBrList, TempListSize, 
             TempListSize = TempListSize + 1
             TempBrList[TempListSize] = nBranchHnd
     return ListSize
+#
+def getRelayTime( hndRelay, mult, consider_signalonly):
+    sx = create_string_buffer(b'\000' * 128)
+    triptime = c_double(0.0)
+    if OLXAPI_OK != OlxAPI.GetRelayTime(hndRelay,c_double(mult), c_int(consider_signalonly), byref(triptime),sx):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    #
+    return triptime.value, (sx.value).decode("UTF-8")
 
 #
-dictCode_BR_sID   = {TC_LINE:LN_sID  , TC_SWITCH:SW_sID  , TC_PS: PS_sID  , TC_XFMR:XR_sID  , TC_XFMR3:X3_sID  , TC_SCAP:SC_sID   }
-dictCode_BR_sName = {TC_LINE:LN_sName, TC_SWITCH:SW_sName, TC_PS: PS_sName, TC_XFMR:XR_sName, TC_XFMR3:X3_sName, TC_SCAP:SC_sName }
-dictCode_BR_RAT   = {TC_LINE:1       , TC_SWITCH:7       , TC_PS: 3       , TC_XFMR:2       , TC_XFMR3:10}
-dictCode_BR_nBus  = {TC_LINE:[LN_nBus1Hnd,LN_nBus2Hnd], TC_SWITCH:[SW_nBus1Hnd,SW_nBus2Hnd] , TC_PS: [PS_nBus1Hnd,PS_nBus2Hnd], \
-                     TC_SCAP:[SC_nBus1Hnd,SC_nBus2Hnd], TC_XFMR:[XR_nBus1Hnd,XR_nBus2Hnd]   , TC_XFMR3 :[X3_nBus1Hnd,X3_nBus2Hnd,X3_nBus3Hnd]}
+def getEquipmentData(ehnd,paraCode):
+    """
+    Find data of element [] (line/bus/...)
+        Args :
+            ehnd []:  handle element
+            nParaCode: code data (BUS_,LN_,...)
 
+        Returns:
+            data [len(bhnd)]
+
+        Raises:
+            OlxAPIException
+   """
+    # get data
+    res = []
+    vt = paraCode//100
+    val1 = setValType(vt,0)
+    for ehnd1 in ehnd:
+        if ( OLXAPI_FAILURE == OlxAPI.GetData( ehnd1, c_int(paraCode), byref(val1) ) ) :
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        #
+        res.append( process_GetDataBuf(val1,paraCode,ehnd1) )
+    #
+    return res
 #
 def getDataByBranch(hndBr,scode):
     # hndBr: branch handle
-    # scode = 'sID' | 'sName'
+    # scode = 'sID' | 'sName' | 'sC'
     # return
     #
     typ  = getEquipmentData([hndBr],BR_nType)[0]
@@ -817,8 +848,10 @@ def getDataByBranch(hndBr,scode):
         paraCode = dictCode_BR_sID[typ]
     elif scode == "sName":
         paraCode = dictCode_BR_sName[typ]
+    elif scode == "sC":
+        return dictCode_BR_sC[typ]
     else:
-        raise OlrxAPIException("Error scode")
+        raise OlxAPIException("Error scode")
     #
     return getEquipmentData([ehnd],paraCode)[0]
 
@@ -833,7 +866,7 @@ def getBusByBranch(hndBr):
             bus[nBus1Hnd,nBus2Hnd, (nBus3Hnd)]
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     bres = []
     b1 = getEquipmentData([hndBr],BR_nBus1Hnd)[0]
@@ -861,7 +894,7 @@ def getBusByEquipment(ehnd,TC_Type):
             bus[nBus1Hnd,nBus2Hnd, (nBus3Hnd)]
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     busHnd = dictCode_BR_nBus[TC_Type]
     #
@@ -870,39 +903,47 @@ def getBusByEquipment(ehnd,TC_Type):
         busRes.append(getEquipmentData([ehnd],b1)[0])
     #
     return busRes
+#
+def getParaSys(cod):
+    """
+    get para system
+    cod = SY_dBaseMVA...
+    """
+    argsGetData = {}
+    argsGetData["hnd"] = HND_SYS
+    argsGetData["token"] = cod
+    if OLXAPI_OK != get_data(argsGetData):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    return  argsGetData["data"]
 
 #
-def getEquipmentData(ehnd,paraCode):
+def get1EquipmentData(ehnd,paraCode):
     """
-    Find data of element [] (line/bus/...)
+    Find data of 1 element (line/bus/...)
         Args :
-            ehnd []:  handle element
-            nParaCode: code data (BUS_,LN_,...)
+            ehnd:  handle element
+            nParaCode []: code data (BUS_,LN_,...)
 
         Returns:
-            data [len(bhnd)]
+            data [len(paraCode)]
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
    """
-    # get data
+   # get data
     res = []
-    vt = paraCode//100
-    val1 = setValType(vt,0)
-    for ehnd1 in ehnd:
-        if ( OLXAPI_FAILURE == OlxAPI.GetData( ehnd1, c_int(paraCode), byref(val1) ) ) :
+    for paraCode1 in paraCode:
+        vt = paraCode1//100
+        val1 = setValType(vt,0)
+        if ( OLXAPI_FAILURE == OlxAPI.GetData( ehnd, c_int(paraCode1), byref(val1) ) ) :
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        if vt==VT_STRING:
-            res.append((val1.value).decode('UTF-8'))
-        else:
-            res.append(val1.value)
-    #
+        #
+        res.append( process_GetDataBuf(val1,paraCode1,ehnd) )
     return res
-
 #
 def get1EquipmentData_try(ehnd,paraCode):
     """
-    Find data of 1 element (line/bus/...) with try/except =-1 if not found
+    Find data of 1 element (line/bus/...) with try/except =None if not found
         Args :
             ehnd : handle element
             nParaCode: code data (BUS_,LN_,...)
@@ -911,13 +952,13 @@ def get1EquipmentData_try(ehnd,paraCode):
             data (=-1 if not found)
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     try:
         val = getEquipmentData([ehnd],paraCode)[0]
         return val
     except:
-        return -1
+        return None
 
 #
 def get1EquipmentData_array(ehnd,paraCode):
@@ -931,34 +972,31 @@ def get1EquipmentData_array(ehnd,paraCode):
             data array [] (array data attached to ehnd)
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
    """
     # get data
     res = []
     vt = paraCode//100
     val1 = setValType(vt,0)
     while ( OLXAPI_OK  == OlxAPI.GetData(ehnd,c_int(paraCode), byref(val1) ) ) :
-        if vt==VT_STRING:
-            res.append((val1.value).decode("UTF-8"))
-        else:
-            res.append(val1.value)
+        res.append( process_GetDataBuf(val1,paraCode,ehnd) )
     #
     return res
-
 #
 def setValType(vt,value):
-##    vt = paracode//100
     if vt == VT_STRING:
         if value==0:
             return create_string_buffer(b'\000' * 128)
         else:
-            return c_char_p(value.encode("UTF-8"))
+            return c_char_p( value.encode('UTF-8'))
     elif vt == VT_DOUBLE:
        return c_double(value)
     elif vt == VT_INTEGER or vt==0:
        return c_int(value)
+    elif vt == VT_ARRAYDOUBLE or vt==VT_ARRAYSTRING or vt==VT_ARRAYINT:
+        return c_GetDataBuf
     #
-    raise OlxAPI.OlrxAPIException("Error of paraCode")
+    raise OlxAPI.OlxAPIException("Error of paraCode")
 
 #
 def getBusEquipmentData(bhnd,paraCode):
@@ -974,7 +1012,7 @@ def getBusEquipmentData(bhnd,paraCode):
            [][]  = [len(bhnd)] [len(all equipment)]
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
    """
     # get data
     res = []
@@ -1001,14 +1039,35 @@ def getEquipmentHandle(TC_type):
             all handle
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
    """
     res = []
     hndBr = c_int(0)
     while ( OLXAPI_OK == OlxAPI.GetEquipment(c_int(TC_type), byref(hndBr) )) :
         res.append(hndBr.value)
     return res
-
+#
+def getAll_Bus():
+    """
+    Find all handle of BUS
+    """
+    return getEquipmentHandle(TC_BUS)
+#
+def getAll_Area():
+    """
+    Find all handle of Area
+    """
+    busHnd = getAll_Bus()
+    ar = getEquipmentData(busHnd,BUS_nArea)
+    return list(set(ar))
+#
+def getAll_Zone():
+    """
+    Find all handle of Area
+    """
+    busHnd = getAll_Bus()
+    ar = getEquipmentData(busHnd,BUS_nZone)
+    return list(set(ar))
 #
 def branchIsInType(hndBr,typeConsi):
     """
@@ -1055,7 +1114,7 @@ def branchesNextToBranch(hndBr,typeConsi):
                                               |
                                               | br_res
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     br_Self = -1
     br_res = []
@@ -1101,7 +1160,7 @@ def getOppositeBranch_1(hndBr,typeConsi): # Without XFMR3
             list of opposite branches
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     if len(typeConsi)==0:
         typeConsi1 = [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR]
@@ -1134,14 +1193,9 @@ def getOppositeBranch(hndBr,typeConsi): # all type of branch
             list of opposite branches
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
-    if len(typeConsi)==0:
-        typeConsi1 = [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR,TC_XFMR3]
-    else:
-        typeConsi1 = typeConsi[:]
-
-    ba,bra = getRemoteTerminals(hndBr,typeConsi1)
+    bra,bt,ba,equip = getRemoteTerminals(hndBr,typeConsi)
     #
     return bra
 
@@ -1161,7 +1215,29 @@ def lineComponents(hndBr,typeConsi): # Without XFMR3
             list of branches
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
+            if road found>1000 => error
+    """
+    b2t = 0 # not test end by bus
+    return lineComponents_0(hndBr,b2t,typeConsi)
+#
+def lineComponents_0(hndBr,b2t,typeConsi): # Without XFMR3
+    """
+    Purpose: find list branches of line (start by hndBr) end by bus (b2t) if not b2t<=0
+            All taps are ignored. Close switches are included.
+            Branches out of service are ignored.
+
+        Args :
+            hndBr :  branch handle (start)
+            b2t   " bus handle (end)
+            typeConsi: type considered as component of line
+            [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR]
+
+        returns :
+            list of branches
+
+        Raises:
+            OlxAPIException
             if road found>1000 => error
     """
     if len(typeConsi)==0:
@@ -1173,8 +1249,8 @@ def lineComponents(hndBr,typeConsi): # Without XFMR3
     b2 = getEquipmentData([hndBr],BR_nBus2Hnd)[0]
     nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
     typ1  = getEquipmentData([hndBr],BR_nType)[0]
-    if nTap1!=0:
-        raise Exception("Impossible to start lineComponents from a Tap bus:" + OlxAPI.FullBusName(b1))
+    if nTap1!=0 and b2t<=0:
+        raise Exception("Impossible to start lineComponents from a Tap bus with no end bus:" + OlxAPI.FullBusName(b1))
     #
     if TC_XFMR3 in typeConsi1:
         raise Exception("Impossible run lineComponents with XFMR3")
@@ -1190,50 +1266,54 @@ def lineComponents(hndBr,typeConsi): # Without XFMR3
     while True:
         bra_in = []
         for br1 in bra:
-            #
-            nTap,br_Self,br_res = branchesNextToBranch(br1, typeConsi1)
-            if nTap ==0 or len(br_res)==0: # finish
-                for i in range(len(brA_res)):
-                    if br1 == brA_res[i][len(brA_res[i])-1]:
-                        brA_res[i].append(br_Self)
+            b2 = getEquipmentData([br1],BR_nBus2Hnd)[0]
+            if b2t>0 and b2==b2t:#finish
+                pass
             else:
-                br0 = br_res[0]
-                b20 = getEquipmentData([br0],BR_nBus2Hnd)[0]
                 #
-                if len(br_res)==1: # tap 2
+                nTap,br_Self,br_res = branchesNextToBranch(br1, typeConsi1)
+                if nTap ==0 or len(br_res)==0: # finish
+                    for i in range(len(brA_res)):
+                        if br1 == brA_res[i][len(brA_res[i])-1] and br_Self>0:
+                            brA_res[i].append(br_Self)
+                else:
+                    br0 = br_res[0]
+                    b20 = getEquipmentData([br0],BR_nBus2Hnd)[0]
                     #
-                    for i in range(len(brA_res)):
-                        if (br1 == brA_res[i][len(brA_res[i])-1]) and (b20 not in bsa[i]):
-                            brA_res[i].append(br0)
-                            bsa[i].append(b20)
-                            bra_in.append(br0)  # continue this direction
-                else: # tap>3
-                    k = -1
-                    for i in range(len(brA_res)):
-                        if br1 == brA_res[i][len(brA_res[i])-1]:
-                            k = i
-                            break
-                    # add more direction
-                    for i in range(1,len(br_res)):
-                        bri = br_res[i]
-                        b2 = getEquipmentData([bri],BR_nBus2Hnd)[0]
-                        if (b2 not in bsa[k]):
-                            brd = []
-                            brd.extend(brA_res[k])
-                            brd.append(bri)
-                            brA_res.append(brd)
-                            #
-                            bsd = []
-                            bsd.extend(bsa[k])
-                            bsd.append(b2)
-                            bsa.append(bsd)
-                            #
-                            bra_in.append(bri)
-                    # continue this direction
-                    if (b20 not in bsa[k]):
-                        brA_res[k].append(br0)
-                        bsa[k].append(b20)
-                        bra_in.append(br0)
+                    if len(br_res)==1: # tap 2
+                        #
+                        for i in range(len(brA_res)):
+                            if (br1 == brA_res[i][len(brA_res[i])-1]) and (b20 not in bsa[i]):
+                                brA_res[i].append(br0)
+                                bsa[i].append(b20)
+                                bra_in.append(br0)  # continue this direction
+                    else: # tap>3
+                        k = -1
+                        for i in range(len(brA_res)):
+                            if br1 == brA_res[i][len(brA_res[i])-1]:
+                                k = i
+                                break
+                        # add more direction
+                        for i in range(1,len(br_res)):
+                            bri = br_res[i]
+                            b2 = getEquipmentData([bri],BR_nBus2Hnd)[0]
+                            if (b2 not in bsa[k]):
+                                brd = []
+                                brd.extend(brA_res[k])
+                                brd.append(bri)
+                                brA_res.append(brd)
+                                #
+                                bsd = []
+                                bsd.extend(bsa[k])
+                                bsd.append(b2)
+                                bsa.append(bsd)
+                                #
+                                bra_in.append(bri)
+                        # continue this direction
+                        if (b20 not in bsa[k]):
+                            brA_res[k].append(br0)
+                            bsa[k].append(b20)
+                            bra_in.append(br0)
         # finish or not
         if len(bra_in)==0:
             break
@@ -1243,21 +1323,21 @@ def lineComponents(hndBr,typeConsi): # Without XFMR3
         # check km
         kmax +=1
         if kmax>1000:
-            raise Exception("Out of range: try to check network")
+            raise Exception("Out of range. Check the network for anomalies.")
 
     #check finish by non Tap bus
     resF = []
     for bra1 in brA_res:
         br1 = bra1[len(bra1)-1]
-        b1 = getEquipmentData([br1],BR_nBus1Hnd)[0]
-        nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
-        if nTap1 ==0:
-            resF.append(bra1)
-    #debug
-##    for bra1 in resF:
-##        print("--")
-##        for br1 in bra1:
-##            print(fullBranchName(br1))
+        if b2t<=0:
+            b1 = getEquipmentData([br1],BR_nBus1Hnd)[0]
+            nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+            if nTap1 ==0:
+                resF.append(bra1)
+        else: # test end by b2t
+            b2 = getEquipmentData([br1],BR_nBus2Hnd)[0]
+            if b2==b2t:
+                resF.append(bra1)
     #
     return resF
 
@@ -1303,14 +1383,17 @@ def getRemoteTerminals(hndBr,typeConsi):
             [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR,TC_XFMR3]
 
         returns :
-            bus_res [] list of terminal bus
+            br_res   [] list of branch terminal
+            bus_res  [] list of terminal bus
+            bus_resa [] list of all bus
+            equip    [] list of all equipement
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     inSer1 = getEquipmentData([hndBr],BR_nInService)[0]
     if inSer1 == 2:
-        return [],[]
+        return [],[],[],[]
     #
     if len(typeConsi)==0:
         typeConsi1 = [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR,TC_XFMR3]
@@ -1318,18 +1401,21 @@ def getRemoteTerminals(hndBr,typeConsi):
         typeConsi1 = typeConsi[:]
     #
     bus_res = []
+    bus_resa = []
     br_res  = []
     #
-    setEqui = set()
+    setEqui = []
     equiHnd1 = getEquipmentData([hndBr],BR_nHandle)[0]
-    setEqui.add(equiHnd1)
+    setEqui.append(equiHnd1)
     #
     b123 = getBusByBranch(hndBr)
     b23 = b123[1:]
+    bus_resa.append(b123[0])
     #
     while True:
         bn23_in = []
         for b2 in b23:
+            bus_resa.append(b2)
             #
             nTap = getEquipmentData([b2],BUS_nTapBus)[0]
             allBr1 = getBusEquipmentData([b2],TC_BRANCH)[0]
@@ -1339,13 +1425,14 @@ def getRemoteTerminals(hndBr,typeConsi):
                 if alltyp[i] in typeConsi1:
                     allBr.append(allBr1[i])
             #
-            if nTap==0 or len(allBr)==1:
+            if nTap==0 or len(allBr)==1:# finish
                 bus_res.append(b2)
                 # check
                 for br1 in allBr:
                     equi1 = getEquipmentData([br1],BR_nHandle)[0]
                     if (equi1 in setEqui) and br1!=hndBr:
-                        br_res.append(br1)
+                        if br1 not in br_res:
+                            br_res.append(br1)
             else:
                 for br1 in allBr:
                     equi1 = getEquipmentData([br1],BR_nHandle)[0]
@@ -1361,9 +1448,10 @@ def getRemoteTerminals(hndBr,typeConsi):
                             bus_res.append(b2)
                             for br2 in allBr:
                                 if br2!=br1:
-                                    br_res.append(br2)
+                                    if br2 not in br_res:
+                                        br_res.append(br2)
                         elif statusSW>0 and inSer1==1 :
-                            setEqui.add(equi1)
+                            setEqui.append(equi1)
                             b123 = getBusByBranch(br1)
                             bn23_in.extend(b123[1:])
         #update b23
@@ -1374,171 +1462,45 @@ def getRemoteTerminals(hndBr,typeConsi):
 ##        print("tempo")
 ##        for br1 in br_res:
 ##            print(fullBranchName(br1))
-    return list(set(bus_res)), list(set(br_res))
+    return br_res, list(set(bus_res)), list(set(bus_resa)), setEqui
 
 #
-def saveString2File(nameFile,sres):
-    try:
-        text_file = open(nameFile, "w")
-        text_file.write(sres)
-        text_file.close()
-        print("File saved as: " + nameFile)
-    except:
-        pass
-
-#
-def addString2File(nameFile,sres):
-    try:
-        text_file = open(nameFile, "a")
-        text_file.write(sres)
-        text_file.close()
-    except:
-        pass
-
-#
-def read_File_text (sfile):
-    # read file text to array
-    ar = []
-    try:
-        ins = open( sfile, "r" )
-        for line in ins:
-            ar.append(line.replace("\n",""))
-        ins.close()
-    except OSError:
-        raise Exception(OSError.strerror)
-    #
-    return ar
-#
-def read_File_text_1 (sfile):
-    # read file text to str
-    sres = ""
-    try:
-        ins = open(sfile, "r" )
-        sres = ins.read()
-        ins.close()
-    except OSError:
-        raise Exception(OSError.strerror)
-    #
-    return sres
-
-# to update name file output ARGVS.fo,fr,...
-def updateNameFile(path,fi,exti,fo,exto):
-    #
-    res = fo
-    if res== "":
-        base = os.path.basename(fi).upper().replace(exti.upper(),"")
-        if exto.upper()!= exti.upper():
-            res = os.path.join (path, base + exto.upper())
-        else:
-            res = os.path.join (path, base + "_1"+exto.upper())
-    #
-    if not res.upper().endswith(exto.upper()):
-        res += exto.upper()
-    #
-    return res
-
-#
-def read_File_csv(fileName, delim):
-    res = []
-    ar = read_File_text(fileName)
-    #
-    for a1 in ar:
-        if a1.replace(" ","") != "":
-            v1 = str(a1).split(delim)
-            res.append(v1)
-    return res
-
-#
-def read_File_excell(fileName):
+def searchLines(b1,b2,cktid):
     """
-    read file excel
-    return ws => work sheet active
-    need to install openpyxl
+    purpose: return list of branch lines beetween bus1/bus2
+    args:
+            - b1,b2 bus1/2 handle
+            - cktid circuit id (str)
+    return
+            - linea : list of line handle between bus1/bus2 without test cktid
+            - linea_wid : list of line handle between bus1/bus2 with test cktid
     """
-    import openpyxl
-    wb = openpyxl.load_workbook(fileName)
-    ws = wb.active
-    return ws
-
-#
-def read_File_csv_as_Excell(fileName, delim):
-    """
-    read file csv
-            return as work sheet excell
-    need to install openpyxl
-    """
-    import openpyxl,csv
-    wb = openpyxl.Workbook()
-    ws = wb.active
+    linea = []
+    linea_wid = []
+    if b1<=0 or b2<=0:
+        return linea,linea_wid
     #
-    with open(fileName) as f:
-        reader = csv.reader(f, delimiter=delim)
-        for row in reader:
-            ws.append(row)
-    return ws
-
-#
-def deleteFile(sfile):
-    try:
-        if os.path.isfile(sfile):
-            os.remove(sfile)
-    except:
-        pass
-#
-def saveAsOlr(fileNew):
-    fileNew = fileNew.replace("/","\\")
-    if fileNew:
-        if OLXAPI_FAILURE == OlxAPI.SaveDataFile(fileNew):
-            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        return True
-    return False
-
-#
-def compare2FileText(file1,file2):
-    # compare 2 file Text:
-    # returns: arrays of number of line different
-    ar1 = read_File_text(file1)
-    ar2 = read_File_text(file2)
-    dif = []
-    for i in range(max(len(ar1),len(ar2))):
-        a1 = ""
-        a2 = ""
-        try:
-            a1 = ar1[i]
-        except:
-            pass
-        try:
-            a2 = ar2[i]
-        except:
-            pass
-        #
-        a1 = a1.strip()
-        a2 = a2.strip()
-        if a1!=a2:
-            dif.append(i+1)
-    return dif
-
-#
-def unit_test_compare(PATH_FILE,PY_FILE,sres):
-    """
-    tool for unit test
-    - save result to file.txt
-    - compare result with REF
-    """
-    fileRes = os.path.join(PATH_FILE,PY_FILE.replace(".py","_ut.txt"))
+    br = getBusEquipmentData([b1],TC_BRANCH)[0]
+    for br1 in br:
+        bra = lineComponents_0(br1,b2,[TC_LINE])
+        for bra1 in bra:
+            la = getEquipmentData(bra1,BR_nHandle)
+            linea.append(la)
     #
-    saveString2File(fileRes,sres)
-    # compare.
-    fileREF = fileRes.replace(".txt","_REF.txt")
+    if cktid=='': # no cktid
+        return linea,linea_wid
     #
-    dif = compare2FileText(fileREF,fileRes) # return array of line number with difference
-
-    if len(dif)==0:
-        print("\nPASS unit test: "+ PY_FILE+ "("+ os.path.basename(fileRes)+ "=="+os.path.basename(fileREF)+")")
-    else:
-        print("\nPROBLEM unit test: " + PY_FILE+ "("+ os.path.basename(fileRes)+ "!="+os.path.basename(fileREF)+")")
-        print("\tdifferences in lines: ",dif)
-
+    for la1 in linea:
+        test = True
+        ida1 = getEquipmentData(la1,LN_sID)
+        for id1 in ida1:
+            if id1!=cktid:
+                test = False
+                break
+        if test:
+            linea_wid.append(la1)
+    #
+    return linea,linea_wid
 #
 def setData(hnd,paraCode,value):
     """
@@ -1552,7 +1514,7 @@ def setData(hnd,paraCode,value):
             None
 
         Raises:
-            OlrxAPIException
+            OlxAPIException
     """
     vt = paraCode//100
     val1 = setValType(vt,value)
@@ -1567,25 +1529,7 @@ def postData(hnd):
     # Validation
     if OLXAPI_OK !=  OlxAPI.PostData(c_int(hnd)):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-    return OLXAPI_OK
-
-#
-def convert_LengthUnit(len_unit1,len_unit):
-    """
-    convert unit from [len_unit] => [len_unit1]
-    """
-    if len_unit1 =="" or len_unit1 == len_unit:
-        return len_unit,1
-    #
-    dictC = {"ft_km":0.0003048, "kt_km": 1.852  , "mi_km":1.609344, "m_km":0.001, \
-             "km_ft":3280.8399, "km_kt": 0.53996, "km_mi":0.621371, "km_m":1000 , "km_km":1}
-    #
-    s1 = len_unit +"_km"
-    s2 = "km_"+len_unit1
-    val = dictC[s1] * dictC[s2]
-    #
-    return len_unit1, val
-
+    return True
 #
 def getSCVoltage(hnd, style ):
     #style (c_int)     : voltage result style
@@ -1623,47 +1567,47 @@ def getSCCurrent(hnd,style):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
     #
     return vd12Mag[:],vd12Ang[:]
-
 #
 def getSCCurrent_A(hnd):
     mag,ang = getSCCurrent(hnd,style=4)
     return vd12Mag[0],ang[0]
-
 #
 def getSCCurrent_p(hnd):
     mag,ang = getSCCurrent(hnd,style=2)
     return mag[1],ang[1]
-
 #
-def gui_Error(sTitle,sMain):
-    root = tk.Tk()
-    try:
-        root.wm_iconbitmap(OLXAPI_DLL_PATH+"ASPEN.ico")
-    except:
-        pass
-    #
-    root.withdraw()
-    tkm.showerror(sTitle,sMain)
-    root.destroy()
-
-#-----------
-def getStrNow():
-    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
+def fullBranchName_1(hbr):
+    return AppUtils.deleteSpace1(OlxAPI.FullBranchName(hbr))
 #
 def fullBranchName(hbr):
-    sa = str(OlxAPI.FullBranchName(hbr)).rsplit()
-    sres = ""
-    for s1 in sa:
-        sres += s1 +" "
-    return sres
+    return OlxAPI.FullBranchName(hbr)
 #
 def fullBusName(bhnd):
     return OlxAPI.FullBusName(bhnd)
 #
+def fullBusName_1(bhnd):
+    return AppUtils.deleteSpace1(OlxAPI.FullBusName(bhnd))
+#
+def faultDescription():
+    return OlxAPI.FaultDescription(0)
+#
+def faultDescription_1():
+    return AppUtils.deleteSpace1(OlxAPI.FaultDescription(0))
+#
+def version_Build():
+    return "OneLiner Version :" + str(OlxAPI.Version()) + ", Build: " + str(OlxAPI.BuildNumber())
+#
+def doFault_2(ehnd,fltConn, fltOpt_idx, outageOpt, outageLst, fltR, fltX, clearPrev):
+    # do fault with fltOpt_idx
+    fltOpt = [0]*15
+    for id1 in fltOpt_idx:
+        fltOpt[id1] = 1
+    #
+    doFault(ehnd,fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev)
+#
 def doFault(ehnd,fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
     """
-    fltConn = [3LG, 2LG, 1LG, LL]
+    fltConn = [3LG, 2LG, 1LG, LL] see getFltConn_doFault
         fltConn =[1,0,0,0]   => 3LG
         fltConn =[1,0,1,0]   => 3LG, 1LG
     fltOpt:
@@ -1684,9 +1628,9 @@ def doFault(ehnd,fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
         fltOpt[14]     - Outage line grounding admittance in mho [***] = 0.
     outageOpt:
         outageOpt[0]   - one at a time
-        outageOpt[0]   - two at a time
-        outageOpt[0]   - all at once
-        outageOpt[0]   - breaker failure (**)
+        outageOpt[1]   - two at a time
+        outageOpt[2]   - all at once
+        outageOpt[3]   - breaker failure (**)
     outageLst:         - (c_int*100): list of handles of branches to be outaged; 0 terminated
     clearPrev:         - clear previous result flag. 1 - set; 0 - reset
     fltR, fltX:        - fault resistance,reactance, in Ohm
@@ -1720,31 +1664,47 @@ def pick1stFault():
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
 #
 def pickNextFault():
-    return OlxAPI.PickFault(c_int(SF_NEXT),c_int(9))
-
+    # return False if finish
+    if OLXAPI_FAILURE==OlxAPI.PickFault(c_int(SF_NEXT),c_int(9)):
+        return False
+    return True
 #
-class Gui_Select(tk.Frame):
-    def __init__(self, parent,w1,xOK,yOK,xCom,yCom,data,select):
-        tk.Frame.__init__(self, parent)
-        self.parent = parent
-        self.data = data
-        self.select = select
-        self.initGUI(w1,xOK,yOK,xCom,yCom)
+def getAllRelay(hndRlyGroup):
+    """
+    get all relay handle of a relay group
+    """
+    ra = []
+    hndRelay = c_int(0)
+    while OLXAPI_OK == OlxAPI.GetRelay( hndRlyGroup, byref(hndRelay) ) :
+        ra.append(hndRelay.value)
+    return ra
+#
+def getRelayID(rlyhnd_a):
+    res =[]
+    for r1 in rlyhnd_a:
+        tc = OlxAPI.EquipmentType(r1)
+        sid = getEquipmentData([r1],dictCode_RLY_sID[tc])[0]
+        res.append(sid)
+    return res
+
+def getOutageList(hnd, maxTiers):
+    """
+        hnd	(c_int): handle of a bus, branch or a relay group.
+        wantedTypes: 1- Line; 2- 2-winding transformer;
+                     4- Phase shifter; 8- 3-winding transformer; 16- Switch
+                     Serie capacitor/Reactor ?
+    """
+    res = []
+    wantedTypes = c_int(1+2+4+8+16)
+    listLen = c_int(0)
+    OlxAPI.MakeOutageList(hnd, c_int(maxTiers), wantedTypes, None, pointer(listLen) )
+##    print( "listLen=" + str(listLen.value) )
+    branchList = (c_int*(5+listLen.value))(0)
+    OlxAPI.MakeOutageList(hnd, c_int(maxTiers), wantedTypes, branchList, pointer(listLen) )
+    for i in range(listLen.value):
+        res.append(branchList[i])
     #
-    def initGUI(self,w1,xOK,yOK,xCom,yCom):
-        #
-        self.cb = ttk.Combobox(self.parent,width=w1, values=self.data)
-        self.cb.place(x=xCom, y=yCom)
-        self.cb.bind("<<ComboboxSelected>>")
-        self.cb.current(0)
-        #
-        button_OK = tk.Button(self.parent,text =   '     OK     ',command=self.run_OK)
-        button_OK.place(x=xOK, y=yOK)
-    #
-    def run_OK(self):
-        x = self.cb.get()
-        self.select.append(x)
-        self.parent.destroy()
+    return res
 
 #
 class BusSearch:
@@ -1814,6 +1774,15 @@ class BusSearch:
             self.busNum =  busNum
             self.flagNum = True
             self.flagNameKV = False
+    #
+    def runSearch_exact(self):
+        if self.flagNameKV:
+            bhnd  = OlxAPI.FindBus(self.busName,self.kV)
+            if bhnd>0:
+                return bhnd
+        if self.flagNum:
+            bhnd = OlxAPI.FindBusNo(self.busNum)
+        return bhnd
     #
     def runSearch(self):
         self.sSelected = ""
@@ -1994,10 +1963,7 @@ class BusSearch:
         #
         if self.gui==1:
             root = tk.Tk()
-            try:
-                root.wm_iconbitmap(OLXAPI_DLL_PATH+"ASPEN.ico")
-            except:
-                pass
+            setIco(root,"","1LINER.ico")
         #
         if len(self.ba)==1:
             if self.ba[0]==0:
@@ -2295,10 +2261,7 @@ class BranchSearch:
         #
         if self.gui==1:
             root = tk.Tk()
-            try:
-                root.wm_iconbitmap(OLXAPI_DLL_PATH+"ASPEN.ico")
-            except:
-                pass
+            setIco(root,"","1LINER.ico")
         #
         if len(self.bra)==1:
             if self.bra[0]==0:
@@ -2345,7 +2308,158 @@ class BranchSearch:
         except:
             self.sSelected = "Selected:\n\t" + fullBranchName(self.bra[0])
             return self.bra[0]
+#
+def FindObj1LPF(obj1LPFStr):
+    """
+    find object by String ("[BUS] 23 'ILLINOIS' 33 kV")
+    return
+        hnd: object handle
+        tc: object type
 
+        return 0,0 if not found
+    """
+    hnd = c_int(0)
+    if OLXAPI_FAILURE == OlxAPI.FindObj1LPF(obj1LPFStr,hnd):
+        return 0,0
+    #
+    tc = OlxAPI.EquipmentType(hnd)
+    #
+    return hnd.value,tc
+
+#
+def FindObj1LPF_check(obj1LPFStr,tc_code):
+    """
+    find object by String
+    if not found OBJ (tc_code= TC_BUS,TC_LINE,...) => Error
+    """
+    hnd,tc = FindObj1LPF(obj1LPFStr)
+    if tc!=tc_code:
+        try:
+            name = dictCode_TC_Name[tc_code]
+        except:
+            name = 'OBJECT'
+        #
+        err = '\n'+name+ ' not found: "' + obj1LPFStr + '"'
+        raise Exception(err)
+    #
+    return hnd
+#
+def BoundaryEquivalent(EquFileName, BusList, FltOpt):
+    FltOpt1 = (c_double*3)(0,0,0)
+    for i in range(3):
+        FltOpt1[i] = c_double(FltOpt[i])
+    #
+    BusList1 = (c_int*len(BusList))(0)
+    for i in range(len(BusList)):
+        BusList1[i]= c_int(BusList[i])
+    #
+    OlxAPI.BoundaryEquivalent(EquFileName, BusList1, FltOpt1)
+#
+def FindObj(TC_type,paraCode,vals):
+    """ find obj by vals
+    Args: TC_type: (TC_LINE,...) equipement type
+          paracode: (LN_sName,..): paratype to search
+          vals [] : values to search
+    returns:
+        []: array of object handle
+
+    example:
+        FindObj(TC_LINE,LN_sName,["NEV/OHIO", "1565"]) => find all line with name =["NEV/OHIO", "1565"]
+    """
+    #
+    res = [None] * len(vals)
+    #
+    obA = getEquipmentHandle(TC_type)
+    va = getEquipmentData(obA,paraCode)
+    for j in range (len(vals)):
+        for i in range(len(va)):
+            if vals[j]==va[i]:
+                res[j] = obA[i]
+                break
+    return res
+#
+def getTest():
+    """
+    get para system
+    cod = SY_dBaseMVA...
+    """
+    argsGetData = {}
+    argsGetData["hnd"] = TC_SYS
+    argsGetData["token"] = TC_AREA
+    if OLXAPI_OK != get_data(argsGetData):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    return  argsGetData["data"]
+#
+def saveAsOlr(fileNew):
+    fileNew = os.path.abspath(fileNew)
+    if fileNew:
+        if OLXAPI_FAILURE == OlxAPI.SaveDataFile(fileNew):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        OlxAPI.CloseDataFile()
+        return True
+    return False
+#
+def run1LPFCommand(cmdParams):
+    if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdParams):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    return True
+#
+def addString2File(nameFile,sres):
+    print("addString2File: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.add2File(nameFile,sres)
+#
+def read_File_text (sfile):
+    print("read_File_text: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.read_File_text(sfile)
+#
+def read_File_text_1 (sfile):
+    print("read_File_text_1: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.read_File_text_1(sfile)
+#
+def updateNameFile(path,fi,exti,fo,exto):
+    #to update name file output ARGVS.fo,fr,...
+    print("@This function is deprecated, it is replaced by AppUtils.py")
+    #
+    res = fo
+    if res== "":
+        base = os.path.basename(fi).upper().replace(exti.upper(),"")
+        res = os.path.join (path, base + exto.upper())
+    #
+    if not res.upper().endswith(exto.upper()):
+        res += exto.upper()
+    #
+    return res
+#
+def read_File_csv(fileName, delim):
+    print("read_File_csv: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.read_File_csv(fileName, delim)
+#
+def deleteFile(sfile):
+    print("deleteFile: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.deleteFile(sfile)
+#
+def compare2FileText(file1,file2):
+    print("compare2FileText: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.compare2FilesText(file1,file2)
+
+def convert_LengthUnit(len_unit1,len_unit):
+    print("convert_LengthUnit: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.convert_LengthUnit(len_unit1,len_unit)
+#
+def gui_Error(sTitle,sMain):
+    print("gui_Error: This function is deprecated, it is replaced by AppUtils.py")
+    AppUtils.gui_error(sTitle,sMain)
+
+#-----------
+def getStrNow():
+    print("getStrNow: This function is deprecated, it is replaced by AppUtils.py")
+    return AppUtils.getStrNow()
+#
+def findBusNumber(bn,bkv):
+    bhnd = OlxAPI.FindBus(bn,bkv)
+    if bhnd>0:
+        return get1EquipmentData(bhnd,[BUS_nNumber])[0]
+    return -1
 
 
 

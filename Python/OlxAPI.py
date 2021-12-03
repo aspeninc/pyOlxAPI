@@ -1,15 +1,15 @@
-﻿""" Python wrapper for ASPEN OlxAPI.DLL
+﻿""" Python wrapper for ASPEN olxapi.dll
 
 """
 __author__ = "ASPEN"
-__copyright__ = "Copyright 2020, Advanced Systems for Power Engineering Inc."
+__copyright__ = "Copyright 2021, Advanced Systems for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "15.3.1"
+__version__ = "15.6.3"
 __email__ = "support@aspeninc.com"
-__status__ = "Pre-release"
+__status__ = "Release"
 
 from ctypes import *
-import os.path
+import sys,os.path
 from OlxAPIConst import *
 
 class OlxAPIException(Exception):
@@ -20,19 +20,57 @@ class OlxAPIException(Exception):
         self.msg = msg
     def __str__(self):
         return self.msg
-
-ASPENOlxAPIDLL = None    #
-
-def InitOlxAPI(dllPath):
+#
+def encode3(s):
+    """
+    convert string => bytes
+    for compatibility python 2/3
+    """
+    if type(s)==str:
+        return s.encode('UTF-8')
+    return s
+#
+def decode(s):
+    """
+    convert bytes => string
+    """
+    if type(s)==bytes:
+        return s.decode('UTF-8')
+    return s
+#
+def getASPENFile(path,sfile):
+    """
+    return: abs path of sfile
+            None if not found
+    """
+    if not os.path.isfile( os.path.join(path,sfile) ) :
+        path = "C:\\Program Files (x86)\\ASPEN\\1LPFv15"
+    if not os.path.isfile( os.path.join(path,sfile) ) :
+        path = "C:\\Program Files\\ASPEN\\1LPFv15"
+    if not os.path.isfile( os.path.join(path,sfile) ) :
+        path = "C:\\Program Files (x86)\\ASPEN\\1LPFv14\\OlrxAPI"
+    if not os.path.isfile( os.path.join(path,sfile) ) :
+        path = "C:\\Program Files\\ASPEN\\1LPFv14\\OlrxAPI"
+    #
+    sf = os.path.join(path,sfile)
+    if os.path.isfile(sf) :
+        return os.path.abspath(sf)
+    else:
+        return None
+#
+ASPENOlxAPIDLL = None
+#
+def InitOlxAPI(dllPath,prt=True):
     """Initialize OlxAPI session.
 
     Successfull initialization is required before any
     other OlxAPI call can be executed.
 
     Args:
-        dllPath (string): Full path name with \\ as last character of
-                ASPEN program folder where OlxAPI.dll and related
-                program components are located
+        dllPath (string): Full path name ASPEN program folder
+                          where olxapi.dll and related
+                          program components are located
+                          if ="" => find automatic on disc C
 
     Returns:
         None
@@ -43,33 +81,60 @@ def InitOlxAPI(dllPath):
     global ASPENOlxAPIDLL
     if ASPENOlxAPIDLL != None:
         return
-    # get the module handle and create a ctypes library object
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = "C:\\Program Files (x86)\\ASPEN\\1LPFv15\\"
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = "C:\\Program Files\\ASPEN\\1LPFv15\\"
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = "C:\\Program Files (x86)\\ASPEN\\1LPFv14\\OlrxAPI\\"
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        dllPath = "C:\\Program Files\\ASPEN\\1LPFv14\\OlrxAPI\\"
-    if not os.path.isfile(dllPath + "olxapi.dll") :
-        raise OlxAPIException("Failed to locate: " + dllPath + "olxapi.dll")
-    os.environ['PATH'] = os.path.abspath(dllPath) + ";" + os.environ['PATH']
     #
-    ASPENOlxAPIDLL = WinDLL(dllPath + "olxapi.dll", use_last_error=True)
+    olxapi = getASPENFile(dllPath,"olxapi.dll")
+    if olxapi ==None:
+        raise OlxAPIException("Failed to locate: " + olxapi )
+    #
+    path = os.path.dirname(olxapi)
+    if path not in sys.path:
+        os.environ['PATH'] = path + ";" + os.environ['PATH']
+    # Attempt to copy hasp_rt.exe to the executable path.
+    # (Required in network key applications)
+    ph1 = os.path.join(os.path.dirname(sys.executable),"hasp_rt.exe")
+    if not os.path.isfile(ph1):
+        ph2 = os.path.join(path,"hasp_rt.exe")
+        if os.path.isfile(ph2):
+            try:
+                from shutil import copyfile
+                copyfile(ph2,ph1)
+            except :
+                #raise Exception("\nPermission denied: " +os.path.dirname(sys.executable))
+                pass
+    # Load the OlxAPI.dll
+    ASPENOlxAPIDLL = WinDLL(olxapi , use_last_error=True)
     if ASPENOlxAPIDLL == None:
         raise OlxAPIException("Failed to setup olxapi.dll")
+    # OlxAPI.dll is hardcoded to return ErrorString() of "No Error" 
+    # when and only when the session is successfully initialzed and active
     errorAPIInit = "OlxAPI Init Error"
     try:
         # Attempt to get error string
         errorAPIInit = ErrorString()
     except:
         pass
-    if errorAPIInit != "No Error":                # This string Must match the c++ DLL code
+    if errorAPIInit != "No Error":
         raise OlxAPIException(errorAPIInit)
     #
-    print ( "\tOlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + dllPath)
-    return dllPath
+    if prt:
+        print ( "OlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + path)
+
+#
+def UnloadOlxAPI():
+    """Unload the OlxAPI.dll
+
+    Returns:
+        None
+
+    Raises:
+        OlxAPIException
+    """
+    global ASPENOlxAPIDLL
+    if ASPENOlxAPIDLL != None:
+        if 0!= windll.kernel32.FreeLibrary(ASPENOlxAPIDLL._handle):
+            ASPENOlxAPIDLL = None
+        else:
+            raise OlxAPIException("Failed to unload olxapi.dll")
 
 # API function prototypes
 def Version():
@@ -77,7 +142,7 @@ def Version():
     """
     buf = create_string_buffer(b'\000' * 1028)
     ASPENOlxAPIDLL.OlxAPIVersionInfo(buf)
-    vData = (buf.value).decode("UTF-8").split(" ")
+    vData = decode(buf.value).split(" ")
     return vData[2]
 
 def BuildNumber():
@@ -85,9 +150,10 @@ def BuildNumber():
     """
     buf = create_string_buffer(b'\000' * 1028)
     ASPENOlxAPIDLL.OlxAPIVersionInfo(buf)
-    vData = (buf.value).decode("UTF-8").split(" ")
+    vData = decode(buf.value).split(" ")
     return int(vData[4])
 
+#
 def SaveDataFile(filePath):
     """Save ASPEN OLR data file to disk
 
@@ -95,11 +161,25 @@ def SaveDataFile(filePath):
         filePath (c_char_p) : Full path name of ASPEN OLR file.
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPISaveDataFile.argtypes = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPISaveDataFile(filePath.encode('UTF-8'))
+    return ASPENOlxAPIDLL.OlxAPISaveDataFile( encode3(filePath) )
+
+def CloseDataFile():
+    """Close the network data file that had been loaded previously
+       with a call to OlxAPILoadDataFile
+
+    Args: None
+
+    Returns:
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
+
+    Remarks:
+    """
+    return ASPENOlxAPIDLL.OlxAPICloseDataFile()
 
 def LoadDataFile(filePath,readonly):
     """Read ASPEN OLR data file from disk
@@ -109,11 +189,19 @@ def LoadDataFile(filePath,readonly):
         readonly (c_int): open in read-only mode. 1-true; 0-false
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
+        OLXAPI_DATAFILEANOMALIES: File opened with data errors
+
+    Remarks:
+        The OneLiner’s TTY output during the data file reading operation execution
+        is atomatically saved in the log file PowerScriptTTYLog.txt in the
+        Windows %TEMP% folder. When this funtions return value is other than OLXAPI_OK,
+        you must check the content of this log file for details of data errors and
+        warnings that were found when reading the file and proceed accordingly.
     """
     ASPENOlxAPIDLL.OlxAPILoadDataFile.argtypes = [c_char_p,c_int]
-    return ASPENOlxAPIDLL.OlxAPILoadDataFile(filePath.encode('UTF-8'),readonly)
+    return ASPENOlxAPIDLL.OlxAPILoadDataFile( encode3(filePath) ,readonly)
 
 def ReadChangeFile(filePath):
     """Read ASPEN CHF file from disk
@@ -123,12 +211,12 @@ def ReadChangeFile(filePath):
         flag (c_int): Change file processing flag: 1-true; 0-false
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
         1xxx           : Change file applied with xxx warnings
     """
     ASPENOlxAPIDLL.OlxAPIReadChangeFile.argtypes = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPIReadChangeFile(filePath.encode('UTF-8'))
+    return ASPENOlxAPIDLL.OlxAPIReadChangeFile( encode3(filePath) )
 
 def GetEquipment(type, p_hnd):
     """Retrieves handle of the next equipment of given type in the system.
@@ -143,26 +231,27 @@ def GetEquipment(type, p_hnd):
         p_hnd (pointer(c_int)): Object handle
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
 
     """
     ASPENOlxAPIDLL.OlxAPIGetEquipment.argstype = [c_int,c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetEquipment(type, p_hnd)
 
 
+
 def EquipmentType(hnd):
-    """Returns equipment of the given handle.
+    """Returns the equipment type of the given handle.
 
     Args:
         hdn (c_int): Object handle
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
 
     """
-    ASPENOlxAPIDLL.OlxAPIGetEquipment.argstype = [c_int]
+    ASPENOlxAPIDLL.OlxAPIEquipmentType.argstype = [c_int]
     return ASPENOlxAPIDLL.OlxAPIEquipmentType(hnd)
 
 def GetData(hnd, token, dataBuf):
@@ -174,8 +263,8 @@ def GetData(hnd, token, dataBuf):
         dataBuf (c_void_p): data buffer
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetData.argtypes = [c_int,c_int,c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetData(hnd, token, dataBuf)
@@ -188,11 +277,11 @@ def FindBus(name, kv):
         kv (c_double):      Bus nominal kv
 
     Returns:
-        OLRXAPI_FAILURE: Failure
+        OLXAPI_FAILURE: Failure
         hnd     : bus handle
     """
     ASPENOlxAPIDLL.OlxAPIFindBus.argtypes = [c_char_p,c_double]
-    return ASPENOlxAPIDLL.OlxAPIFindBus(name.encode('UTF-8'), kv)
+    return ASPENOlxAPIDLL.OlxAPIFindBus( encode3(name) , kv)
 
 def FindEquipmentByTag(tags, devType, hnd):
     """Find handle of object of devType that has
@@ -206,13 +295,13 @@ def FindEquipmentByTag(tags, devType, hnd):
                          TC_FUSE,   TC_SWITCH, TC_RECLSRP, TC_RECLSRG or zero.
         hnd (POINTER(c_int)):  Object handle
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     Remarks: To get the first object in the list, call this function with *hnd equal 0.
              Call this function with devType equal 0 to search all object types.
     """
     ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag.argtypes = [c_char_p,c_int,POINTER(c_int)]
-    return ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag(tags.encode('UTF-8'), devType, hnd)
+    return ASPENOlxAPIDLL.OlxAPIFindEquipmentByTag( encode3(tags) , devType, hnd)
 
 def FindBusNo(no):
     """Find handle of bus with given number.
@@ -221,7 +310,7 @@ def FindBusNo(no):
         no (c_int):    Bus number (must non zero)
 
     Returns:
-        OLRXAPI_FAILURE: Failure
+        OLXAPI_FAILURE: Failure
         hnd     : bus handle
     """
     ASPENOlxAPIDLL.OlxAPIFindBusNo.argtypes = [c_int]
@@ -236,8 +325,8 @@ def SetData(hnd, token, p_data):
         p_data (c_void_p): New field value
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPISetData.argstype = [c_int, c_int, c_void_p]
     return ASPENOlxAPIDLL.OlxAPISetData(hnd, token, p_data)
@@ -268,8 +357,8 @@ def GetBusEquipment(hndBus, type, pHnd):
         p_hnd (byref(c_int): object handle
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetBusEquipment.argtypes = [c_int,c_int,c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetBusEquipment( hndBus, type, pHnd)
@@ -285,8 +374,8 @@ def PostData(hnd):
         hnd (c_int): Object handle
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIPostData.argtypes = [c_int]
     return ASPENOlxAPIDLL.OlxAPIPostData(hnd)
@@ -298,8 +387,8 @@ def DeleteEquipment(hnd):
         hnd (c_int): Object handle
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIDeleteEquipment.argtypes = [c_int]
     return ASPENOlxAPIDLL.OlxAPIDeleteEquipment(hnd)
@@ -318,8 +407,8 @@ def GetPSCVoltage( hnd, vdOut1, vdOut2, style ):
                              1: output voltage in kV
                              2: output voltage in per-unit
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetPSCVoltage.argtypes = [c_int, c_double*3, c_double*3, c_int]
     return ASPENOlxAPIDLL.OlxAPIGetPSCVoltage( hnd, vdOut1, vdOut2, style )
@@ -340,8 +429,8 @@ def GetSCVoltage( hnd, vdOut1, vdOut2, style ):
                                 2: output ABC phase voltage in rectangular form
                                 4: output ABC phase voltage in polar form
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetSCVoltage.argtypes = [c_int, c_double*9, c_double*9, c_int]
     return ASPENOlxAPIDLL.OlxAPIGetSCVoltage( hnd, vdOut1, vdOut2, style )
@@ -367,8 +456,8 @@ def GetSCCurrent( hnd, vdOut1, vdOut2, style ):
                             4: output ABC phase current in polar form
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetSCCurrent.argtypes = [c_int, c_double*12, c_double*12, c_int]
     return ASPENOlxAPIDLL.OlxAPIGetSCCurrent( hnd, vdOut1, vdOut2, style )
@@ -382,8 +471,8 @@ def GetRelay( hndRlyGroup, hndRelay ):
         hndRlyGroup (c_int): Relay group handle
         hndRelay (byref(c_int)): relay handle
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetRelay.argtypes = [c_int, c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetRelay( hndRlyGroup, hndRelay );
@@ -397,8 +486,8 @@ def GetLogicScheme( hndRlyGroup, hndScheme ):
         hndRlyGroup (c_int): Relay group handle
         hndScheme (byref(c_int)): Logic scheme handle
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetLogicScheme.argtypes = [c_int, c_void_p]
     return ASPENOlxAPIDLL.OlxAPIGetLogicScheme( hndRlyGroup, hndScheme );
@@ -421,8 +510,8 @@ def GetRelayTime( hndRelay, mult, consider_signalonly, trip, device ):
                      TOC=value Time overcurrent element operating quantity in secondary amps
                      IOC=value Instantaneous overcurrent element operating quantity in secondary amps
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetRelayTime.argtypes = [c_int, c_double, c_void_p, c_char_p, c_int]
     return ASPENOlxAPIDLL.OlxAPIGetRelayTime( hndRelay, mult, trip, device, consider_signalonly )
@@ -603,15 +692,6 @@ def Run1LPFCommand(Params):
                 OUTAGE2XFMRS	Run double and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEXFMRS =0
                 OUTAGE3SOURCES	Outage only  3 strongest sources: 0-False; 1-True. Ignored if OUTAGEMULINES=0 and OUTAGEXFMRS =0
 
-            Command: SETGENREFANGLE - Network | Set generator reference angle
-            Attributes:
-                REPORTPATHNAME	Full pathname of folder for report files.
-                REFERENCEGEN	Bus name and kV of reference generator in format: 'BNAME', KV.
-                EQUSOURCEOPTION	Option for calculating reference angle of equivalent sources. Must have one of the following values
-                [ROTATE] 	apply delta angle of existing reference gen
-                SKIP   	Leave unchanged. This option will be in effect automatically when old reference is not valid
-                ASGEN  	Use angle computed for regular generator
-
             Command: CHECKRELAYSETTINGS - Check | Relay settings
             Attributes:
                SELECTEDOBJ=
@@ -635,15 +715,30 @@ def Run1LPFCommand(Params):
                OUTAGE1LINE1XFMR= 1 or 0 Double outage line and transformer
                OUTAGE2XFMR= 1 or 0 Double outage transformers
 
+           Command: DIFFANDMERGE - File | Compare and Merge...
+           Attributes:
+               FILEPATHA     Full pathname of file A. Can be ommited when and OLR file
+                             had been opened.
+               FILEPATHB (*) Full pathname of file B.
+               FILEPATHBASE	 Full pathname of common base.
+               FILEPATHDIFF	 Full pathname of the ADX file with DIFF result.
+               FILEPATHMERGED  Full pathname of the OLR file with merge result.
+
             Command: EXPORTNETWORK = File | Export network data
             Attributes:
                FORMAT     = Output format: [DXT]-ASPEN DXT; PSSE-PSS/E Raw and Seq
+                                           XML- ASPEN XML; CSV- ASPEN CSV
                SCOPE      =  Export scope: [0]-Entire network; 1-Area number; 2- Zone number
                AREANO     =  Export area number
                ZONENO	  =  Export zone number
                INCLUDETIES=  Include ties: [0]-False; 1-True
                ====DXT export only:
                DXTPATHNAME= (*) full valid pathname of ouput DXT file
+               ====XML export only:
+
+               OUTPUTPATHNAME= (*) full valid pathname of ouput XML file
+               DATATYPE   = Types of data to include in the export. Integer number with
+                            [Bit 1]-Network; Bit 2- Relay;
                ====PSSE export only:
                RAWPATHNAME= (*) full valid pathname of ouput RAW file
                SEQPATHNAME= (*) full valid pathname of ouput SEQ file
@@ -692,44 +787,59 @@ def Run1LPFCommand(Params):
             Command SAVEFLTSPEC - Save desc and spec of faults in the result buffer to XML or CSV files
             Attributes:
                 REPORTPATHNAME= (*)Output file pathname
-                APPEND= [0]: overwrite existing file; 1: Append to existing file; 
+                APPEND= [0]: overwrite existing file; 1: Append to existing file;
                 FORMAT= output file format [0]: XML; 1: CSV
                 CLEARPREV= Clear previous results flag to be recorded in the XML output
-                            [0]: no; 1: yes; 
+                            [0]: no; 1: yes;
                 RANGE= Comma delimited list of fault index numbers and ranges(e.g. 1,3,5-10)
                         Default: save all faults in the results buffer
 
+            Command: SETGENREFANGLE - Network | Set generator reference angle
+            Attributes:
+                REPORTPATHNAME	Full pathname of folder for report files.
+                REFERENCEGEN	Bus name and kV of reference generator in format: 'BNAME', KV.
+                EQUSOURCEOPTION	Option for calculating reference angle of equivalent sources. Must have one of the following values
+                [ROTATE] 	apply delta angle of existing reference gen
+                SKIP   	Leave unchanged. This option will be in effect automatically when old reference is not valid
+                ASGEN  	Use angle computed for regular generator
+
             Command SIMULATEFAULT - Run OneLiner command FAULTS  | BATCH COMMAND & FAULT SPEC FILE | EXECUTE COMMAND
-            Attributes: 
-                <FAULT> The <SIMULATEFAULT> XML node must contain one or more children nodes <FAULT>, 
-                         one for each fault case to be simulated. 
-                <FLTSPEC>  Each of the <FAULT> nodes can include up to 40 fault specifications to be 
-                           simulated in the case. Fault specification string in the format described in 
-                           OneLiner’s user manual APPENDIX I:  FAULT SPECIFICATION FILE 
-                           must be included as the text of children nodes <FLTSPEC>. 
-                FLTSPCVS= Alternatively, a tab-delimited list of all the fault spec strings can be entered as 
-                          the attribute "FLTSPCVS" in the <FAULT> node. 
-                CLEARPREV= Clear previous result buffer flag [0]: no; 1: yes; 
+            Attributes:
+                <FAULT> The <SIMULATEFAULT> XML node must contain one or more children nodes <FAULT>,
+                         one for each fault case to be simulated.
+                <FLTSPEC>  Each of the <FAULT> nodes can include up to 40 fault specifications to be
+                           simulated in the case. Fault specification string in the format described in
+                           OneLiner’s user manual APPENDIX I:  FAULT SPECIFICATION FILE
+                           must be included as the text of children nodes <FLTSPEC>.
+                FLTSPCVS= Alternatively, a tab-delimited list of all the fault spec strings can be entered as
+                          the attribute "FLTSPCVS" in the <FAULT> node.
+                CLEARPREV= Clear previous result buffer flag [0]: no; 1: yes;
             Returns:
-                OLRXAPI_FAILURE: Failure
+                OLXAPI_FAILURE: Failure
                 NOfault        : Total number of faults in the solution buffer
             Remark:
                 When NOfault is not the expected value, call OlxAPIErrorString() for details of simulation error
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIRun1LPFCommand.argstype = [c_char_p]
-    return ASPENOlxAPIDLL.OlxAPIRun1LPFCommand(Params.encode('UTF-8'))
+    return ASPENOlxAPIDLL.OlxAPIRun1LPFCommand( encode3(Params) )
 
 def DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
     """Run stepped-event simulation
 
     Remarks:
-        After successful call of OlxAPIDoSteppedEvent() you must call
-        function GetSteppedEvent() to retrieve detailed result of
+        After successful call to OlxAPIDoSteppedEvent() you must call
+        the function GetSteppedEvent() to retrieve detailed results of
         each step in the simulation.
+
+        To retrieve the fault simulation results at a network element
+        in each event, call PickFault() with the event index then use
+        GetSCCurrent(), GetSCVoltage() and GetRelayOperation() functions
+        accordingly.
+
 
     Args:
         hnd (c_int): handle of a bus or a relay group.
@@ -750,18 +860,21 @@ def DoSteppedEvent(hnd, fltOpt, runOpt, noTiers):
             fltOpt(4+4) - Fault reactance in additional user event, ohm
             fltOpt(4+5) - Zero or Fault connection code for additional user event
         ...
-        runOpt (c_int*5): simulation options flags. 1 - set; 0 - reset
+        runOpt (c_int*7): simulation options flags. 1 - set; 0 - reset
             runOpt(1)  - Consider OCGnd operations
             runOpt(2)  - Consider OCPh operations
             runOpt(3)  - Consider DSGnd operations
             runOpt(4)  - Consider DSPh operations
             runOpt(5)  - Consider Protection scheme operations
-
+            runOpt(6)  - Consider Voltage relay operations
+            runOpt(7)  - Consider Differential relay operations
+        nTiers: Study extent. Take into account protective devices located within this number
+                of tiers only.
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
-    ASPENOlxAPIDLL.OlxAPIDoSteppedEvent.argstype = [c_int,c_double*64,c_int*5,c_int]
+    ASPENOlxAPIDLL.OlxAPIDoSteppedEvent.argstype = [c_int,c_double*64,c_int*7,c_int]
     return ASPENOlxAPIDLL.OlxAPIDoSteppedEvent(hnd, fltOpt, runOpt, noTiers)
 
 def GetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest ):
@@ -782,8 +895,8 @@ def GetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest 
         faultDesc (c_char_p): Fault description string of the event.
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetSteppedEvent.argstype = [c_int,c_void_p,c_void_p,c_void_p,c_char_p,c_char_p]
     return ASPENOlxAPIDLL.OlxAPIGetSteppedEvent( step, timeStamp, fltCurrent, userDef, eventDesc, faultDest )
@@ -818,12 +931,12 @@ def DoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
         ConfigFile [in] Full path name of  breaker rating configuration file to apply in
                         this study. Set to emty to omit reading configuration file.
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIDoBreakerRating.argtypes = [POINTER(c_int),c_double,c_double,c_int,c_char_p,c_char_p,c_char_p]
     return ASPENOlxAPIDLL.OlxAPIDoBreakerRating(Scope, RatingThreshold, OutputOpt, OptionalReport,
-                            ReportTXT.encode('UTF-8'), ReportCSV.encode('UTF-8'), ConfigFile.encode('UTF-8'))
+                            encode3(ReportTXT), encode3(ReportCSV), encode3(ConfigFile))
 def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
     """Create boundary equivalent network
 
@@ -839,11 +952,11 @@ def BoundaryEquivalent(EquFileName, BusList, FltOpt) :
                     FltOpt[3]  - Keep all existing annotations (1- set; 0-reset)
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent.argtypes = [c_char_p,POINTER(c_int),c_double*3]
-    return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent(EquFileName.encode('UTF-8'), BusList, FltOpt)
+    return ASPENOlxAPIDLL.OlxAPIBoundaryEquivalent( encode3(EquFileName) , BusList, FltOpt)
 def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
     """Simulate one or more faults
 
@@ -889,8 +1002,8 @@ def DoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev):
              of the two lines must be included in the array vnOutageLst.
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIDoFault.argtypes = [c_int,c_int*4,c_double*15,c_int*4,c_int*100,c_double,c_double,c_int]
     return ASPENOlxAPIDLL.OlxAPIDoFault(hnd, fltConn, fltOpt, outageOpt, outageLst, fltR, fltX, clearPrev)
@@ -910,8 +1023,8 @@ def PickFault( index, tiers ):
         tiers (c_int): number of tiers around faulted bus to compute solution results
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIPickFault.argtypes = [c_int,c_int]
     return ASPENOlxAPIDLL.OlxAPIPickFault( index, tiers)
@@ -935,7 +1048,7 @@ def FaultDescriptionEx(index,flag):
     """
     ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx.argstype = [c_int,c_int]
-    return ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx(index,flag).decode("UTF-8")
+    return decode (ASPENOlxAPIDLL.OlxAPIFaultDescriptionEx(index,flag) )
 def FaultDescription(index):
     """Retrieves description and fltspec strings of a fault in the simulation results buffer.
 
@@ -956,7 +1069,7 @@ def ErrorString():
         string (c_char_p)
     """
     ASPENOlxAPIDLL.OlxAPIErrorString.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIErrorString().decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIErrorString() )
 
 def PrintObj1LPF(hnd):
     """Return a text description of network database object
@@ -972,7 +1085,7 @@ def PrintObj1LPF(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIPrintObj1LPF.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIPrintObj1LPF.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIPrintObj1LPF(hnd)
+    return decode(ASPENOlxAPIDLL.OlxAPIPrintObj1LPF(hnd))
 
 def FullBusName(hnd):
     """Return string composed of name and kV of the given bus
@@ -985,7 +1098,7 @@ def FullBusName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullBusName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullBusName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullBusName(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIFullBusName(hnd) )
 
 def FullBranchName(hnd):
     """Return a string composed of Bus, Bus2, Circuit ID and type
@@ -999,7 +1112,7 @@ def FullBranchName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullBranchName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullBranchName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullBranchName(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIFullBranchName(hnd) )
 
 def FullRelayName(hnd):
     """Return a string composed of relay type, name and branch location
@@ -1012,7 +1125,7 @@ def FullRelayName(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIFullRelayName.restype = c_char_p
     ASPENOlxAPIDLL.OlxAPIFullRelayName.argstype = [c_int]
-    return ASPENOlxAPIDLL.OlxAPIFullRelayName(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIFullRelayName(hnd) )
 
 def GetObjJournalRecord(hnd):
     """Retrieve journal jounal record details of a data object in the OLR file.
@@ -1030,7 +1143,7 @@ def GetObjJournalRecord(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIGetObjJournalRecord(hnd) )
 
 def GetObjTags(hnd):
     """Retrieve tag string for a bus, generator, load, shunt, switched shunt,
@@ -1048,7 +1161,7 @@ def GetObjTags(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIGetObjTags.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjTags.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjTags(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIGetObjTags(hnd) )
 
 def GetObjMemo(hnd):
     """Retrieve memo string for a bus, generator, load, shunt, switched shunt,
@@ -1066,7 +1179,7 @@ def GetObjMemo(hnd):
     """
     ASPENOlxAPIDLL.OlxAPIGetObjMemo.argstype = [c_int]
     ASPENOlxAPIDLL.OlxAPIGetObjMemo.restype = c_char_p
-    return ASPENOlxAPIDLL.OlxAPIGetObjMemo(hnd).decode("UTF-8")
+    return decode( ASPENOlxAPIDLL.OlxAPIGetObjMemo(hnd) )
 
 def SetObjMemo(hnd,memo):
     """Assign memo string for a bus, generator, load, shunt, switched shunt,
@@ -1078,8 +1191,8 @@ def SetObjMemo(hnd,memo):
         memo (c_char_p): Memo string
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
 
     Remarks: Line breaks must be included in the memo string as escape
        charater \n
@@ -1099,8 +1212,8 @@ def SetObjTags(hnd,tags):
         tags (c_char_p): tag string
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
 
     Remarks: tags string must be terminated with ; character
     """
@@ -1128,8 +1241,8 @@ def MakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
         number of outage branches in the number of tiers specified.
 
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
 
     """
     ASPENOlxAPIDLL.OlxAPIMakeOutageList.argtypes = [c_int,c_int,c_int,c_void_p,c_void_p]
@@ -1157,8 +1270,103 @@ def ComputeRelayTime(hnd, curMag, curAng, vMag, vAng,vpreMag, vpreAng, opTime, o
                             ZPn  Phase distance zone n  tripped
                             Ix    Overcurrent relay operating quantity: Ia, Ib, Ic, Io, I2, 3Io, 3I2
     Returns:
-        OLRXAPI_FAILURE: Failure
-        OLRXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIMakeOutageList.argtypes = [c_int,c_double*5,c_double*5,c_double*3,c_double*3,c_double,c_double,c_void_p,c_char*128]
     return ASPENOlxAPIDLL.OlxAPIComputeRelayTime(hnd, curMag, curAng, vMag, vAng,vpreMag, vpreAng, opTime, opDevice)
+
+
+def FindObj1LPF(obj1LPFStr, hnd):
+    """Returns handle number of the object in obj1LPFStr string
+    Args:
+      obj1LPFStr   [in] Object ID string produced by PrintObj1LPF() or
+                        the object GUID
+      hnd         [out] Object handle number.
+    Returns:
+        OLXAPI_FAILURE: Failure
+        OLXAPI_OK     : Success
+    """
+    ASPENOlxAPIDLL.OlxAPIFindObj1LPF.argtypes = [c_char_p, POINTER(c_int)]
+    return ASPENOlxAPIDLL.OlxAPIFindObj1LPF(encode3(obj1LPFStr),hnd)
+
+def GetObjUDFByIndex(hnd,fidx,fname,fval):
+    """Retrieve user-defined field of an object.
+    Args:
+      hnd (c_int)             [in] Object handle
+      nFIdx (c_int)           [in] Field index number (zero based)
+      fname (c_char*MXUDF)    [out] Buffer for field name. Must be MXUDFNAME long. Set to NULL if not needed.
+      fval (c_char*MXUDFNAME) [out] Buffer for field value. Must be MXUDF long. Set to NULL if not needed.
+    Returns:
+      OLXAPI_OK     : Success
+      OLXAPI_FAILURE: Field with the given index does not exist
+   """
+    ASPENOlxAPIDLL.OlxAPIGetObjUDFByIndex.argtypes = [c_int,c_int,c_char*(MXUDFNAME+1),c_char*(MXUDF+1)]
+    return ASPENOlxAPIDLL.OlxAPIGetObjUDFByIndex(hnd,fidx,fname,fval)
+    return ret
+
+def GetObjUDF(hnd, fname, fval):
+    """Retrieve the value of a user-defined field.
+    Parameters:
+        hnd (c_int)             [in] Object handle
+        fname (c_char_p)        [in] Field name
+        fval (c_char*MXUDFNAME) [out] Buffer for field value. Must be MXUDF long
+    Returns:
+        OLXAPI_OK     : Success
+        OLXAPI_FAILURE: Object does not have UDF Field with the given name
+    """
+    ASPENOlxAPIDLL.OlxAPIGetObjUDF.argtypes = [c_int,c_char_p,c_char*(MXUDF+1)]
+    return ASPENOlxAPIDLL.OlxAPIGetObjUDF(hnd,fname,fval)
+
+def SetObjUDF(hnd, fname, fval):
+    """Set the value of a user-defined field.
+    Parameters:
+        hnd (c_int)       [in] Object handle
+        fname (c_char_p)  [in] Field name
+        fval (c_char_p)   [in] Field value
+    Returns:
+        OLXAPI_OK     : Success
+        OLXAPI_FAILURE: Object does not have UDF Field with the given name
+    """
+    ASPENOlxAPIDLL.OlxAPISetObjUDF.argtypes = [c_int,c_char_p,c_char_p]
+    return ASPENOlxAPIDLL.OlxAPISetObjUDF(hnd,fname,fval)
+
+def GetAreaName(no):
+    """Retrieve name of the given area number.
+    Args:
+        no (c_int): Area number
+    Returns:
+        name (c_char_p): Name string
+    Remarks: if the funtion fails to execute the return string will consist of
+          error message that begins with the key words: "GetAreaName failure:..."
+    """
+    ASPENOlxAPIDLL.OlxAPIAreaName.argstype = [c_int]
+    ASPENOlxAPIDLL.OlxAPIAreaName.restype = c_char_p
+    return decode( ASPENOlxAPIDLL.OlxAPIGetAreaName(hnd) )
+
+def GetZoneName(no):
+    """Retrieve name of the given area number.
+    Args:
+        no (c_int): Zone number
+    Returns:
+        name (c_char_p): Name string
+    Remarks: if the funtion fails to execute the return string will consist of
+          error message that begins with the key words: "GetZoneName failure:..."
+    """
+    ASPENOlxAPIDLL.OlxAPIZoneName.argstype = [c_int]
+    ASPENOlxAPIDLL.OlxAPIZoneName.restype = c_char_p
+    return decode( ASPENOlxAPIDLL.OlxAPIGetZoneName(hnd) )
+
+def GetObjGUID(hnd):
+    """Retrieve name of the given area number.
+    Args:
+        hnd (c_int)  [in] Object handle
+    Returns:
+        guid (c_char_p): GUID string
+    Remarks: if the funtion fails to execute the return string will consist of
+          error message that begins with the key words: "GetObjGUID failure:..."
+    """
+    ASPENOlxAPIDLL.OlxAPIGetObjGUID.argstype = [c_int]
+    ASPENOlxAPIDLL.OlxAPIGetObjGUID.restype = c_char_p
+    return decode( ASPENOlxAPIDLL.OlxAPIGetObjGUID(hnd) )
+
