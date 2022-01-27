@@ -8,7 +8,7 @@ __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.3.1"
+__version__   = "1.3.2"
 #
 import sys,os
 import OlxAPI
@@ -197,10 +197,14 @@ def process_GetDataBuf(buf,tokenV,hnd):
                 count = 3
             elif tc == TC_RLYOCG and tokenV == OG_vdDirSetting:
                 count = 8
-            elif tc == TC_RLYOCG and tokenV in [OG_vdDTPickup,OG_vdDTDelay]:
-                count = 5
             elif tc == TC_RLYOCP and tokenV == OP_vdDirSetting:
                 count = 8
+            elif tc == TC_RLYOCG and tokenV == OG_vdDirSettingV15:
+                count = 9
+            elif tc == TC_RLYOCP and tokenV == OP_vdDirSettingV15:
+                count = 9
+            elif tc == TC_RLYOCG and tokenV in [OG_vdDTPickup,OG_vdDTDelay]:
+                count = 5
             elif tc == TC_RLYOCP and tokenV in [OP_vdDTPickup,OP_vdDTDelay]:
                 count = 5
             elif tc == TC_RLYDSG and tokenV == DG_vdParams:
@@ -1027,7 +1031,6 @@ def getBusEquipmentData(bhnd,paraCode):
                 r2.append(val1.value)
         res.append(r2)
     return res
-
 #
 def getEquipmentHandle(TC_type):
     """
@@ -1068,6 +1071,7 @@ def getAll_Zone():
     busHnd = getAll_Bus()
     ar = getEquipmentData(busHnd,BUS_nZone)
     return list(set(ar))
+
 #
 def branchIsInType(hndBr,typeConsi):
     """
@@ -2460,9 +2464,3 @@ def findBusNumber(bn,bkv):
     if bhnd>0:
         return get1EquipmentData(bhnd,[BUS_nNumber])[0]
     return -1
-
-
-
-
-
-

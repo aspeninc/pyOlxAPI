@@ -1,7 +1,7 @@
 """
-Purpose:  Check phase shift of all 2-winding transformers with wye-delta connection.
+Purpose:  Check the phase shift across all 2-winding transformers with wye-delta connection.
           When a transformer with high side lagging the low side is found,
-          this function converts it to make the high side lead.
+          this script modifies the delta side to make the high side leads.
 """
 __author__    = "ASPEN Inc."
 __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
@@ -10,7 +10,7 @@ __category__  = "Common"
 __pyManager__ = "Yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.2"
+__version__   = "1.2.3"
 
 import sys,os
 PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
@@ -68,7 +68,7 @@ def run():
         #
         test = False
 
-        # small - hight  =>  small - hight
+        # low - hight  =>  low - hight
         #   G   - D             G  - E
         if (tapA<tapB) and configA=="G" and configB=="D":
             test = True
@@ -77,7 +77,7 @@ def run():
             # validation
             OlxAPILib.postData(x1)
 
-        # hight - small  =>  hight - small
+        # low - small  =>  low - small
         #  G    - E              G - D
         if (tapA>tapB) and configA=="G" and configB=="E":
             test = True
@@ -91,9 +91,9 @@ def run():
              s1 += '\n'+str(kd).ljust(5)  + OlxAPILib.fullBranchName(x1)
     #
     if kd>0:
-        s2 = "Fixed (" + str(kd) + ") wye-delta transformers such that the high side leads the low side:"
+        s2 = "Fixed (" + str(kd) + ") wye-delta transformers to make the high side lead the low side:"
     else:
-        s2 = "All wye-delta transformers in this OLR file have phase shift with high-side leading low-side."
+        s2 = "All wye-delta transformers in this OLR file have the correct phase shift of the high-side leading the low-side."
     #
     print(s2+s1)
     #
@@ -102,7 +102,7 @@ def run():
         #
         OlxAPILib.saveAsOlr(ARGVS.fo)
         if ARGVS.ut==0:
-            print("All corrects had been saved in:\n" + ARGVS.fo)
+            print("The modified network had been saved as:\n" + ARGVS.fo)
             AppUtils.launch_OneLiner(ARGVS.fo)
     #
     return s2+s1

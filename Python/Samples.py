@@ -3,7 +3,7 @@
 __author__ = "ASPEN Inc."
 __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __email__ = "support@aspeninc.com"
 __status__ = "Release"
 
@@ -30,8 +30,38 @@ INPUTS.usage = '\n\tsample.py -fi "InputFile.olr"'
 INPUTS.add_argument('-fi' , metavar='', help = '*(str) OLR input file',   default = "")
 INPUTS.add_argument('-fib' , metavar='', help = '(str) OLR input file B',   default = "")
 INPUTS.add_argument('-fo' , metavar='', help = '(str) output file',   default = "")
-INPUTS.add_argument('-test' , metavar='', help = '(str) test to run',   default = "")
 ARGVS = INPUTS.parse_known_args()[0]
+
+def testEliminateZZBranch():
+    """Test API EliminateZZBranch
+    """
+    buf = (c_int*10)(0)
+    argsGetEquipment = {}
+    argsGetEquipment["tc"] = TC_SWITCH
+    argsGetEquipment["hnd"] = 0  # Get the first object
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+        hnd = argsGetEquipment["hnd"]
+        argsGetData = {}
+        argsGetData["hnd"] = hnd
+        argsGetData["token"] = SW_nInService
+        if OLXAPI_OK != OlxAPILib.get_data(argsGetData):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        if 0 != argsGetData["data"]:
+            sObj1LPF = OlxAPI.PrintObj1LPF(hnd)
+            print(sObj1LPF)
+            OlxAPI.OlxAPIEliminateZZBranch(hnd, 1+2+4, buf )
+            print( "Retained buses" )
+            for i in range(len(buf)):
+                if buf[i]==-1:
+                    break
+                print(buf[i])
+                print(OlxAPI.PrintObj1LPF(buf[i]))
+            print( "Eliminated buses" )
+            for ii in range(i+1,len(buf)):
+                if buf[ii]==-1:
+                    break
+                print(buf[ii])
+                print(OlxAPI.PrintObj1LPF(buf[ii]))
 
 def testFindObj1LPF():
     """Test API FindObj1LPF
@@ -915,6 +945,7 @@ def testGetData_SetData():
 
 
 def testGetData():
+    testGetData_SetData()
     #testGetData_SCHEME()
     #testGetData_BREAKER()
     #testGetData_GENUNIT()
@@ -922,9 +953,8 @@ def testGetData():
     #testGetData_LOADUNIT()
     #testGetData_DSRLY()
     #testGetData_BUS()
-    testGetRelay()
+    #testGetRelay()
     #testGetJournalRecord()
-    testGetData_SetData()
     return 0
 
 def testOlxAPI():
@@ -946,6 +976,7 @@ def testOlxAPI():
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
         print("File opened successfully: " + olrFilePath)
 
+        testEliminateZZBranch()
         #testGetSetUDF()
         #testFindObjGUID()
         #testFindObj1LPF()
@@ -953,10 +984,8 @@ def testOlxAPI():
         #testFindObj()
         #testBoundaryEquivalent(olrFilePath)
         #testDoBreakerRating()
-        if ARGVS.test == "GetData":
-            testGetData()
-        elif ARGVS.test == "FaultSimulation":
-            testFaultSimulation()
+        #testGetData()
+        #testFaultSimulation()
         #testGetSEADeviceOp()
         #testOlxAPIComputeRelayTime()
         #testOlxAPI.MakeOutageList()

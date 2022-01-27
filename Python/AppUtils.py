@@ -10,7 +10,7 @@ __category__  = "Common"
 __pyManager__ = "no"
 __email__     = "support@aspeninc.com"
 __status__    = "Realease"
-__version__   = "1.2.1"
+__version__   = "1.3.3"
 
 import logging
 import traceback
@@ -93,7 +93,7 @@ def getASPENFile(path,sfile):
     else:
         return None
 #
-def logger2File(PY_FILE,prt=True,flog=''):
+def logger2File(PY_FILE,prt=True,flog='',version=''):
     if not flog.endswith('.log'):
         flog = os.path.join(get_opath(""),PY_FILE)
         flog = get_file_out(fo=flog , fi='' , subf='' , ad='' , ext='.log')
@@ -116,16 +116,17 @@ def logger2File(PY_FILE,prt=True,flog=''):
     #
     pe = os.path.split(sys.executable)[1]
     if pe in ['python.exe','pythonw.exe']:
-        logging.info('Run : ' + PY_FILE)
+        logging.info('Run : ' + PY_FILE + ' ' + version)
     else:
-        logging.info('Run : ' + pe)
+        logging.info('Run : ' + pe + ' ' +version)
     #
     logging.info('User: ' + os.getlogin())
     logging.info('Date: ' + time.asctime())
-    logging.info('logFile : ' + flog)
+    logging.info('logFile: ' + flog)
     return flog
 #
-def loggerOffStdout(flog):
+def loggerOffStdout():
+    flog= logging.root.handlers[1].baseFilename
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     #
@@ -465,11 +466,11 @@ def checkFile(fi,exta,desc):
     if fi=='':
         return False,'\n'+ desc+' : None selected'
     if not os.path.isfile(fi):
-        return False,'\n'+ desc+' : File not found\n"%s"'%fi
+        return False,'\n'+ desc+' : File not found\n"%s"'% os.path.abspath(fi)
     #
     ext = (os.path.splitext(fi)[1]).upper()
     if ext not in exta:
-        return False,'\n'+desc+" : Error format " +str(exta) +'\n"%s"'%fi
+        return False,'\n'+desc+" : Error format " +str(exta) +'\n"%s"'%os.path.abspath(fi)
     #
     return True,''
 #
@@ -693,20 +694,20 @@ def getRootError(err):
 #
 def FinishException(pyFile,err):
     if pyFile.upper().endswith('.PY'):
-        flog = logger2File(pyFile,prt=False)
-        loggerOffStdout(flog)
+        try:
+            loggerOffStdout()
+        except:
+            pass
         logging.info('\n'+traceback.format_exc())
-        print("\nlogFile : ",flog)
+        #print("\nlogFile : ",flog)
         print('\nERROR: '+str(err))
         #
         logging.shutdown()
     else:
         raise Exception(err)
-
 #
 def FinishCheck(pyFile,err,PARSER_INPUTS=None):
-    flog = logger2File(pyFile,prt=False)
-    loggerOffStdout(flog)
+    loggerOffStdout()
     logging.info('\n'+err)
     if PARSER_INPUTS!=None:
         PARSER_INPUTS.print_help()
@@ -839,13 +840,14 @@ def checkFileType(fi,ext,err,sTitle0):
 def getValNumber(row):
     ar = []
     for v1 in row:
-        try:
-            v1 = int(v1)
-        except:
+        if type(v1) not in {int ,float}:
             try:
-                v1 = float(v1)
+                v1 = int(v1)
             except:
-                pass
+                try:
+                    v1 = float(v1)
+                except:
+                    pass
         ar.append(v1)
     return ar
 #
@@ -1272,7 +1274,7 @@ def getShortNameFile(fname,ln):
         res +=fname[len(fname)-ln+6:len(fname)]
     return res
 #
-def runCommand(command,PATH_FILE):
+def runCommand(command,PATH_FILE,verbose=1):
     t0 = time.time()
     pyFile = os.path.basename(command[1])
     pe = os.path.basename(command[0])
@@ -1282,15 +1284,17 @@ def runCommand(command,PATH_FILE):
         if t1-t0>5:
              print("runtime: %.1fs" %(t1- t0))
         if returncode>0:
-            print()
-            os.system("pause")
+            if verbose:
+                print()
+                os.system("pause")
             #gui_error("ERROR","ERROR: "+pyFile)
         else:
             createFile(PATH_FILE,"success")
             if not os.path.isfile( os.path.join(PATH_FILE,"pst.bas")):
                 # print("SUCCESSFUL: "+command[1])
-                print()
-                os.system("pause")
+                if verbose:
+                    print()
+                    os.system("pause")
                 #gui_info("SUCCESSFUL","SUCCESSFUL: "+pyFile)
     else:
         out,err, returncode = runSubprocess(command)
@@ -1326,3 +1330,73 @@ def getFileDemo(path0,sfile):
     if os.path.isfile(s1):
         return s1
     raise Exception('File demo not found: '+sfile)
+#
+def encodingFile(sFile):
+    fnew = get_file_out(fo='' , fi=sFile , subf='' , ad='_1', ext='')
+    f0 = open(sFile,"rb")# binary format read file
+    f1 = open(fnew, "w")
+    while True:
+        line = f0.readline()
+        if not line:
+            break
+        else:
+            try:
+                s = line.decode('UTF-8', 'ignore')[:-1]
+                f1.write(s)
+            except:
+                try:
+                    s = line.decode('UTF-8')[:-1]
+                    f1.write(s)
+                except:
+                    pass
+    f0.close()
+    f1.close()
+    return fnew
+#
+def isShipVersion():
+    pe = os.path.basename(sys.executable)
+    return (pe not in ['python.exe','pythonw.exe'])
+#
+def pauseFinal(verbose):
+    if verbose>0 and isShipVersion():
+        print()
+        os.system("pause")
+#
+# Create a run marker file in this folder and keep it open during the
+#        # entire Python execution session. OneLiner will pause execution
+#        # as long as this file exists to wait for the result from Python
+def markerStart(opath):
+    if opath:
+        deleteFile(opath+'\\success')
+        deleteFile(opath+'\\cancel')
+        return openFile(opath,'running')
+    return None,None
+#
+def markerSucces(opath):
+    if opath:
+        createFile(opath,'success')
+#
+def markerStop(opath,FRUNNING,SRUNNING):
+    if opath:
+        if not isFile(opath,'success'):
+            createFile(opath,'cancel')
+        closeFile(FRUNNING)
+        deleteFile(SRUNNING)
+#
+def saveAsIgnoreAr(fi,fo,ar):
+    f0 = open(fi,"rb")# binary format read file
+    f1 = open(fo, "wb")
+    while True:
+        line = f0.readline()
+        if not line:
+            break
+        #
+        t = True
+        for a1 in ar:
+            if line.count(a1)>0:
+                t = False
+                break
+        if t:
+            f1.write(line)
+    f0.close()
+    f1.close()

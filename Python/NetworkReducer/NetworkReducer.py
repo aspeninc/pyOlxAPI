@@ -1,7 +1,6 @@
 """
 Purpose:
-     Create from a full network a smaller OLR model that is suitable for a particular study
-
+     Reduce a network to a smaller boundary equivalent
 """
 __author__    = "ASPEN Inc."
 __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
@@ -26,7 +25,7 @@ from OlxAPIConst import *
 import AppUtils
 
 # INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = AppUtils.iniInput(usage="\n\tCreate from a full network a smaller OLR model that is suitable for a particular study.")
+PARSER_INPUTS = AppUtils.iniInput(usage="\n\tReduce a network to a smaller boundary equivalent.")
 #
 PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR input file path' , default = "", metavar='')
 PARSER_INPUTS.add_argument('-pk' , help = '*(str) Selected Objects in the 1-line diagram', default = [],nargs='+',metavar='')
@@ -56,7 +55,7 @@ class NetworkReducer:
         self.equipA = set()
         self.busA = set()
         #
-        self.brs = ASPENLib.BranchSearch(gui=0)
+        self.brs = OlxAPILib.BranchSearch(gui=0)
     #
     def saveReportBusFile(self):
         ARGVS.fb = AppUtils.get_file_out(fo=ARGVS.fb , fi=ARGVS.fi , subf='' , ad='_bus' , ext='.txt')
@@ -120,6 +119,8 @@ class NetworkReducer:
         for i in range(len(ARGVS.pk)):
             s1 = str(ARGVS.pk[i]).strip()
             hnd,tc = OlxAPILib.FindObj1LPF(s1)
+            if hnd<=0:
+                raise Exception("\nObject not found:"+str(ARGVS.pk))
             if tc== TC_BUS:
                 bus0.append(hnd)
                 self.busPK.add(hnd)
@@ -286,7 +287,7 @@ def run_demo():
     if ARGVS.demo ==1:
         ARGVS.fi = AppUtils.getASPENFile('','SAMPLE30.OLR')
         ARGVS.fo = AppUtils.get_file_out(fo='' , fi=ARGVS.fi , subf='' , ad='_'+os.path.splitext(PY_FILE)[0]+'_demo' , ext='.OLR')
-        ARGVS.pk = ["[XFORMER3] 6 'NEVADA' 132 kV-10 'NEW HAMPSHR' 33 kV-'DOT BUS' 13.8 kV 1"]
+        ARGVS.pk = ["[XFORMER3] 6 'NEVADA' 132 kV-10 'NEVADA' 33 kV-'DOT BUS' 13.8 kV 1"]
         ARGVS.ti = 1
         ARGVS.ar = []
         ARGVS.zo = []

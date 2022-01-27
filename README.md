@@ -1,7 +1,7 @@
 # pyOlxAPI
 Sample ASPEN OlxAPI Python apps for power system studies
 
-    Copyright (c) 2020 Advanced Systems for Power Engineering (ASPEN), Inc.
+    Copyright (c) 2022 Advanced Systems for Power Engineering (ASPEN), Inc.
 
     Permission is hereby granted, free of charge, to any person obtaining
     a copy of this software and associated documentation files (the "Software"),

@@ -4,7 +4,7 @@
 __author__ = "ASPEN"
 __copyright__ = "Copyright 2021, Advanced Systems for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "15.6.3"
+__version__ = "15.7.4"
 __email__ = "support@aspeninc.com"
 __status__ = "Release"
 
@@ -35,7 +35,13 @@ def decode(s):
     convert bytes => string
     """
     if type(s)==bytes:
-        return s.decode('UTF-8')
+        try:
+            return s.decode('UTF-8')
+        except:
+            try:
+                return s.decode('ANSI')
+            except:
+                return str(s)
     return s
 #
 def getASPENFile(path,sfile):
@@ -105,7 +111,7 @@ def InitOlxAPI(dllPath,prt=True):
     ASPENOlxAPIDLL = WinDLL(olxapi , use_last_error=True)
     if ASPENOlxAPIDLL == None:
         raise OlxAPIException("Failed to setup olxapi.dll")
-    # OlxAPI.dll is hardcoded to return ErrorString() of "No Error" 
+    # OlxAPI.dll is hardcoded to return ErrorString() of "No Error"
     # when and only when the session is successfully initialzed and active
     errorAPIInit = "OlxAPI Init Error"
     try:
@@ -117,8 +123,17 @@ def InitOlxAPI(dllPath,prt=True):
         raise OlxAPIException(errorAPIInit)
     #
     if prt:
-        print ( "OlxAPI Version:"+str(Version())+" Build: "+str(BuildNumber()) + " Path: " + path)
-
+        buf = create_string_buffer(b'\000' * 1028)
+        ASPENOlxAPIDLL.OlxAPIVersionInfo(buf)
+        vData = decode(buf.value).split("\n")
+        v1 = vData[0].split()
+        v2 = vData[1].split()
+        Version = v1[2]
+        BuildNumber = v1[4]
+        DBXVersion = int(v2[2])
+        print ( "OlxAPI Version:"+Version+" Build: "+BuildNumber + " Path: " + path)
+        if OLXAPI_DBX_VER<DBXVersion:
+            print('\tWarning DLL DBX version (%i) > DBX Python(%i)\n'%(DBXVersion,OLXAPI_DBX_VER))
 #
 def UnloadOlxAPI():
     """Unload the OlxAPI.dll
@@ -218,7 +233,7 @@ def ReadChangeFile(filePath):
     ASPENOlxAPIDLL.OlxAPIReadChangeFile.argtypes = [c_char_p]
     return ASPENOlxAPIDLL.OlxAPIReadChangeFile( encode3(filePath) )
 
-def GetEquipment(type, p_hnd):
+def GetEquipment(otype, p_hnd):
     """Retrieves handle of the next equipment of given type in the system.
 
     This function will return the handle of all the objectsof the given type,
@@ -227,7 +242,7 @@ def GetEquipment(type, p_hnd):
     Set hnd to 0 to retrieve the first object
 
     Args:
-        type (c_int): Object type
+        otype (c_int): Object type
         p_hnd (pointer(c_int)): Object handle
 
     Returns:
@@ -236,7 +251,7 @@ def GetEquipment(type, p_hnd):
 
     """
     ASPENOlxAPIDLL.OlxAPIGetEquipment.argstype = [c_int,c_void_p]
-    return ASPENOlxAPIDLL.OlxAPIGetEquipment(type, p_hnd)
+    return ASPENOlxAPIDLL.OlxAPIGetEquipment(otype, p_hnd)
 
 
 
@@ -331,11 +346,11 @@ def SetData(hnd, token, p_data):
     ASPENOlxAPIDLL.OlxAPISetData.argstype = [c_int, c_int, c_void_p]
     return ASPENOlxAPIDLL.OlxAPISetData(hnd, token, p_data)
 
-def GetBusEquipment(hndBus, type, pHnd):
+def GetBusEquipment(hndBus, TC_type, pHnd):
     """Retrieves the handle of the next equipment of a given type
     that is attached to a bus.
 
-    The equipment type can be one of the following:
+    The equipment TC_type can be one of the following:
     TC_GEN: 	to get the handle for the generator.
                 There can be at most one at a bus.
     TC_LOAD: 	to get the handle for the load.
@@ -353,7 +368,7 @@ def GetBusEquipment(hndBus, type, pHnd):
 
     Args:
         hndBus (c_int): bus handle
-        type (c_int): object type code
+        TC_type (c_int): object type code
         p_hnd (byref(c_int): object handle
 
     Returns:
@@ -361,7 +376,7 @@ def GetBusEquipment(hndBus, type, pHnd):
         OLXAPI_OK     : Success
     """
     ASPENOlxAPIDLL.OlxAPIGetBusEquipment.argtypes = [c_int,c_int,c_void_p]
-    return ASPENOlxAPIDLL.OlxAPIGetBusEquipment( hndBus, type, pHnd)
+    return ASPENOlxAPIDLL.OlxAPIGetBusEquipment( hndBus, TC_type, pHnd)
 
 def PostData(hnd):
     """Perform validation and update objct data in the network database
@@ -672,10 +687,11 @@ def Run1LPFCommand(Params):
             Command: CHECKRELAYOPERATIONSEA - Check | Relay operation using stepped-events
             Attributes:
                 REPORTPATHNAME	(*) Full pathname of folder for report files.
+                OPTIONSFILEPATH Full pathname of the checking option file.
                 REPORTCOMMENT		Additional comment string to include in all checking report files
                 SELECTEDOBJ	Check line with selected relaygroup. Must  have one of following values
-                "PICKED " 	the highlighted relaygroup on the 1-line diagram
-                "BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;"  location string of  the relaygroup. Format description is in OneLiner help section 10.2.
+                    "PICKED " 	the highlighted relaygroup on the 1-line diagram
+                    "BNO1;'BNAME1';KV1;BNO2;'BNAME2';KV2;'CKT';BTYP;"  location string of  the relaygroup. Format description is in OneLiner help section 10.2.
                 TIERS	[0] Number of tiers around selected object. This attribute is ignored if SELECTEDOBJ is not found.
                 AREAS	[0-9999] Comma delimited list of area numbers and ranges.
                 ZONES	[0-9999] Comma delimited list of zone numbers and ranges. This attribute is ignored if AREAS is found.
@@ -691,6 +707,7 @@ def Run1LPFCommand(Params):
                 OUTAGE1LINE1XFMR	Run double line and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEMULINES=0 or OUTAGEXFMRS =0
                 OUTAGE2XFMRS	Run double and transformer outage contingency: 0-False; 1-True. Ignored if OUTAGEXFMRS =0
                 OUTAGE3SOURCES	Outage only  3 strongest sources: 0-False; 1-True. Ignored if OUTAGEMULINES=0 and OUTAGEXFMRS =0
+                OUTAGEPILOT    Simulate pilot outage in N and N-1 cases
 
             Command: CHECKRELAYSETTINGS - Check | Relay settings
             Attributes:
@@ -703,6 +720,7 @@ def Run1LPFCommand(Params):
                KVS=   Additional KV filter
                TAGS=  Additional tag filter
                REPORTPATHNAME= (*) full valid path to report folder with write access
+               OPTIONSFILEPATH Full pathname of the checking option file.
                REPORTCOMMENT= Report comment string. 255 char or shorter
                FAULTTYPE= 1LG, 3LG. Fault type to check. Space delimited
                DEVICETYPE= OCG, OCP, DSG, DSP, LOGIC, VOLTAGE, DIFF Devide type to check. Space delimited
@@ -807,6 +825,37 @@ def Run1LPFCommand(Params):
             Attributes:
                 <FAULT> The <SIMULATEFAULT> XML node must contain one or more children nodes <FAULT>,
                          one for each fault case to be simulated.
+                         The <FAULT> node can include XML attributes to specify the various fault 
+                         simulation options:
+                               PREFAULTV: Prefault voltage flag
+                                 0 - From linear network solution
+                                 1 - Flat 
+                                 2 - From load flow
+                               VPF: Flat prefault bus voltage
+                               GENZTYPE: Generator reactance flag
+                                 0 - subtransient
+                                 1 - transient
+                                 2 - synchronous 
+                               IGNORE: a bit field array
+                                 bit 1 - ignore load
+                                 bit 2 - ignore positive sequence shunt
+                                 bit 3 - ignore line G and B
+                                 bit 4 - ignore transformer B
+                               GENILIMIT: generator limit option
+                                 0 - Ignore
+                                 1 - Enforce limit 1
+                                 2 - Enforce limit 2
+                               VCCS: Simulate VCCS flag 1-true; 0-false
+                               MOV: MOV protected series capacitor iterative 
+                                    solution flag 1-true; 0-false
+                               MOVITERF: MOV protected series capacitor iterative 
+                                           solution acceleration factor
+                               MINZMUPAIR: Ignore mutual coupling threshold
+                               MVASTYLE: Fault MVA calculatin method
+                               GENW3: Simulate type-3 wind generator flag 1-true; 0-false
+                               GENW4: Simulate CIR flag 1-true; 0-false
+                               FLTOPTSTR: a space delimited string with all the fault otion fields in the order listed above 
+                                      PREFAULTV VPF GENZTYPE IGNORE GENILIMIT VCCS MOV MOVITERF MINZMUPAIR MVASTYLE GENW3 GENW4
                 <FLTSPEC>  Each of the <FAULT> nodes can include up to 40 fault specifications to be
                            simulated in the case. Fault specification string in the format described in
                            OneLiner’s user manual APPENDIX I:  FAULT SPECIFICATION FILE
@@ -1040,9 +1089,37 @@ def FaultDescriptionEx(index,flag):
         index (c_int): Index of fault simulation.
         flag  (c_int): Output flag
                        [0] Fautl description string only
-                       1   Plus FLTSPCVS on the last line
-                       2   Plus FLTOPTSTR on the last line
-                       See SIMULATEFAULT for details of FLTSPCVS and FLTOPTSTR strings
+                       1   Plus FLTSPCVS on the last line. 
+                           See SIMULATEFAULT for details of FLTSPCVS string
+                       2   Plus FLTOPTSTR on the last line: a string containing the following 
+                           fault option data fields, separated by blank space:
+                           PrefaultV: Prefault voltage flag
+                             0 - From linear network solution
+                             1 - Flat 
+                             2 - From load flow
+                           FlatBusV: Flat prefault bus voltage
+                           GenZType: Generator reactance flag
+                             0 - subtransient
+                             1 - transient
+                             2 - synchronous 
+                           IgnoreFlag: a bit array
+                             bit 1 - ignore load
+                             bit 2 - ignore positive sequence shunt
+                             bit 3 - ignore line G and B
+                             bit 4 - ignore transformer B
+                           GenILimitOption: generator limit option
+                             0 - Ignore
+                             1 - Enforce limit 1
+                             2 - Enforce limit 2
+                           SimulateCCGen: Simulate VCCS flag 1-true; 0-false
+                           IgnoreMOV: MOV protected series capacitor iterative 
+                                       solution flag 1-true; 0-false
+                           AccelFactor: MOV protected series capacitor iterative 
+                                       solution acceleration factor
+                           MuThreshold: Ignore mutual coupling threshold
+                           FaultMVAstyle: Fault MVA calculatin method
+                           SimulateGenW3: Simulate type-3 wind generator flag 1-true; 0-false
+                           SimulateGenW4: Simulate CIR flag 1-true; 0-false
     Returns:
         string (c_char_p)
     """
@@ -1199,7 +1276,7 @@ def SetObjMemo(hnd,memo):
     """
     ASPENOlxAPIDLL.OlxAPISetObjMemo.argstype = [c_int,c_char_p]
     ASPENOlxAPIDLL.OlxAPISetObjMemo.restype = c_int
-    return ASPENOlxAPIDLL.OlxAPISetObjMemo(hnd,memo)
+    return ASPENOlxAPIDLL.OlxAPISetObjMemo(hnd,encode3(memo))
 
 
 def SetObjTags(hnd,tags):
@@ -1219,7 +1296,7 @@ def SetObjTags(hnd,tags):
     """
     ASPENOlxAPIDLL.OlxAPISetObjTags.argstype = [c_int,c_char_p]
     ASPENOlxAPIDLL.OlxAPISetObjTags.restype = c_int
-    return ASPENOlxAPIDLL.OlxAPISetObjTags(hnd,tags)
+    return ASPENOlxAPIDLL.OlxAPISetObjTags(hnd,encode3(tags))
 
 def MakeOutageList(hnd, maxTiers, wantedTypes, branchList, listLen):
     """Return list of neighboring branches that can be used as outage list
@@ -1303,7 +1380,6 @@ def GetObjUDFByIndex(hnd,fidx,fname,fval):
    """
     ASPENOlxAPIDLL.OlxAPIGetObjUDFByIndex.argtypes = [c_int,c_int,c_char*(MXUDFNAME+1),c_char*(MXUDF+1)]
     return ASPENOlxAPIDLL.OlxAPIGetObjUDFByIndex(hnd,fidx,fname,fval)
-    return ret
 
 def GetObjUDF(hnd, fname, fval):
     """Retrieve the value of a user-defined field.
@@ -1316,7 +1392,7 @@ def GetObjUDF(hnd, fname, fval):
         OLXAPI_FAILURE: Object does not have UDF Field with the given name
     """
     ASPENOlxAPIDLL.OlxAPIGetObjUDF.argtypes = [c_int,c_char_p,c_char*(MXUDF+1)]
-    return ASPENOlxAPIDLL.OlxAPIGetObjUDF(hnd,fname,fval)
+    return ASPENOlxAPIDLL.OlxAPIGetObjUDF(hnd,encode3(fname),fval)
 
 def SetObjUDF(hnd, fname, fval):
     """Set the value of a user-defined field.
@@ -1329,7 +1405,7 @@ def SetObjUDF(hnd, fname, fval):
         OLXAPI_FAILURE: Object does not have UDF Field with the given name
     """
     ASPENOlxAPIDLL.OlxAPISetObjUDF.argtypes = [c_int,c_char_p,c_char_p]
-    return ASPENOlxAPIDLL.OlxAPISetObjUDF(hnd,fname,fval)
+    return ASPENOlxAPIDLL.OlxAPISetObjUDF(hnd,encode3(fname),encode3(fval))
 
 def GetAreaName(no):
     """Retrieve name of the given area number.
@@ -1370,3 +1446,21 @@ def GetObjGUID(hnd):
     ASPENOlxAPIDLL.OlxAPIGetObjGUID.restype = c_char_p
     return decode( ASPENOlxAPIDLL.OlxAPIGetObjGUID(hnd) )
 
+def OlxAPIEliminateZZBranch( hnd, nOption, pOutBuf ):
+    """ Eliminate switch and zmall impeance line and merge two end bues
+        if the switch is closed
+    Args:
+        hnd (c_int)     Switch or line handle
+        nOption (c_int) Bit 1: Repeat for all connected switches and lines
+                        Bit 2: Output list of retained bus handles (-1 terminated)
+                        Bit 3: Output list of eliminated bus handles (-1 terminated)
+                        Bit 4: Also eliminate small impedance lines
+        pOutBuf   [out] Buffer for outputs. Can be NULL.
+    Returns:
+        OLXAPI_OK     : Success
+        OLXAPI_FAILURE: Failure
+    Remarks: None
+    """
+    ASPENOlxAPIDLL.OlxAPIEliminateZZBranch.argstype = [c_int,c_int,c_void_p]
+    ASPENOlxAPIDLL.OlxAPIEliminateZZBranch.restype = c_int
+    return ASPENOlxAPIDLL.OlxAPIEliminateZZBranch(hnd, nOption, byref(pOutBuf))

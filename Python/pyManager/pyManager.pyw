@@ -13,7 +13,7 @@ __category__  = "Common"
 __pyManager__ = "no"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.2"
+__version__   = "1.2.3"
 
 # IMPORT -----------------------------------------------------------------------
 import logging
@@ -46,7 +46,7 @@ PARSER_INPUTS.add_argument('-tpath',help = ' (str) Output folder for PowerScript
 PARSER_INPUTS.add_argument('-pk' ,  help = ' (str) Selected object in the 1-Liner diagram', default = [],nargs='+',metavar='')
 ARGVS = parseInput(PARSER_INPUTS)
 #
-ARGSR,NARGS,TARGS = None,[],{}
+ARGSR,NARGS,TARGS,VERBOSE = None,[],{},1
 #
 def chekPathIsNotWM(path):
     if not os.path.isdir(path):
@@ -168,6 +168,19 @@ def getInputRequired(out):
                     res.append(a2[0])
             except:
                 pass
+        #
+        if a1.startswith('Arguments     * Required,-h --help:'):
+            test = True
+    return res
+#
+def getInputs(out):
+    res = []
+    an = out.split('\n')
+    test = False
+    for a1 in an:
+        if len(a1)>6 and a1.strip().startswith('-'):
+            a2 = a1.split()
+            res.append(a2[0][1:])
         #
         if a1.startswith('Arguments     * Required,-h --help:'):
             test = True
@@ -529,7 +542,7 @@ class MainGUI(tk.Frame):
     #
     def showPy(self):
         #
-        global NARGS,TARGS,IREQUIRED
+        global NARGS,TARGS,IREQUIRED,VERBOSE
         IREQUIRED = []
         try:
             filehandle = open(self.currentPy, 'a' )
@@ -557,6 +570,7 @@ class MainGUI(tk.Frame):
             return
         #
         IREQUIRED = getInputRequired (out)
+        IInternal = getInputs(out)
         #
         # out = corectOut(out)
         self.text1.insert(tk.END, out)
@@ -574,13 +588,13 @@ class MainGUI(tk.Frame):
             vala = module.ARGVS.__dict__
             valb = dict(sorted(vala.items(), key=lambda item: item[0]))
             #
-            NARGS = ['-h']
-            TARGS = {'-h':str}
+            NARGS = ['-h','-verbose']
+            TARGS = {'-h':str,'-verbose':int}
             for key, val in valb.items():
                 s1 = '-'+key
                 NARGS.append(s1)
                 TARGS[s1]= type(val)
-                if key not in ['ut']:
+                if key in IInternal:
                     s1 +=' '
                     #
                     try:
@@ -615,7 +629,7 @@ class MainGUI(tk.Frame):
         logging.error('\n'+sMain)
     #
     def launch(self):
-        global ARGSR,IREQUIRED
+        global ARGSR,IREQUIRED,VERBOSE
         #
         logging.info('run : '+self.currentPy)
         #
@@ -672,23 +686,39 @@ class MainGUI(tk.Frame):
                     try:
                         val = t1(u2)
                     except:
-                        self.errorInputArgument(v1,'Type (' +str(t1.__name__) + ') not found:')
-                        return
-
-                    if t1!=list:
-                        k2 = u2.find('"')
-                        if k2>=0:
-                            self.errorInputArgument(v1,'Error input:')
+                        try:
+                            if t1 in {int,float}:
+                                u2a = re.split('\s|;|,|"',u2)
+                            else:
+                                u2a = re.split(';|,|"',u2)
+                            for ui in u2a:
+                                val = t1(ui)
+                        except:
+                            self.errorInputArgument(v1,'Type (' +str(t1.__name__) + ') not found:')
                             return
-                        #
-                        if u2:
-                            ARGSR.append(u1)
-                            ARGSR.append(u2)
-                    else:
-                        if u2:
+##                    if t1!=list:
+##                        k2 = u2.find('"')
+##                        if k2>=0:
+##                            self.errorInputArgument(v1,'Error input:')
+##                            return
+##                        #
+##                        if u2:
+##                            ARGSR.append(u1)
+##                            ARGSR.append(u2)
+##                    else:
+                    if u2:
+                        if u1=='-verbose':
+                            try:
+                                VERBOSE = int(u2)
+                            except:
+                                pass
+                        else:
                             ARGSR.append(u1)
                             #
-                            ua = re.split(';|,|"',u2)
+                            if t1 in {int,float}:
+                                ua = re.split('\s|;|,|"',u2)
+                            else:
+                                ua = re.split(';|,|"',u2)
                             for ui in ua:
                                 ui2 = ui.strip()
                                 if ui2:
@@ -756,7 +786,7 @@ def haveParseInput(ar1):
             return False
     return False
 #
-def createRunFile(tpath,args):
+def createRunFile(tpath,args,verb):
     s  = "import sys,os\n"
     s += "PATH_FILE = os.path.split(os.path.abspath(__file__))[0]\n"
     if os.path.isfile(os.path.join(PATH_FILE,'AppUtils.py')):
@@ -766,7 +796,7 @@ def createRunFile(tpath,args):
     plb = plb.replace('\\','/')
     s += "PATH_LIB = "+ '"'+plb+'"\n'
     #
-    s += 'os.environ["PATH"] = PATH_LIB + ";" + os.environ["PATH"]\n'
+    #s += 'os.environ["PATH"] = PATH_LIB + ";" + os.environ["PATH"]\n'
     s += 'sys.path.insert(0, PATH_LIB)\n'
     s += 'import AppUtils\n'
     #
@@ -779,7 +809,7 @@ def createRunFile(tpath,args):
     s+= 'print("Run : "+command[1])\n'
     s+= 'print()\n'
     s+= '#\n'
-    s+='AppUtils.runCommand(command,PATH_FILE)\n'
+    s+='AppUtils.runCommand(command,PATH_FILE,%i)\n'%verb
     #
     sfile = os.path.join(tpath,'run.py')
     saveString2File(sfile,s)
@@ -794,7 +824,7 @@ def runFinal():
         #
         logging.info(s1)
         #
-        sfile = createRunFile(ARGVS.tpath,ARGSR)
+        sfile = createRunFile(ARGVS.tpath,ARGSR,VERBOSE)
         argn = [ARGSR[0],sfile]
         #
         runSubprocess_noWait(argn)
