@@ -2,9 +2,9 @@
 
 """
 __author__ = "ASPEN"
-__copyright__ = "Copyright 2021, Advanced Systems for Power Engineering Inc."
+__copyright__ = "Copyright 2022, Advanced Systems for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "15.7.4"
+__version__ = "15.8.4"
 __email__ = "support@aspeninc.com"
 __status__ = "Release"
 
@@ -825,17 +825,17 @@ def Run1LPFCommand(Params):
             Attributes:
                 <FAULT> The <SIMULATEFAULT> XML node must contain one or more children nodes <FAULT>,
                          one for each fault case to be simulated.
-                         The <FAULT> node can include XML attributes to specify the various fault 
+                         The <FAULT> node can include XML attributes to specify the various fault
                          simulation options:
                                PREFAULTV: Prefault voltage flag
                                  0 - From linear network solution
-                                 1 - Flat 
+                                 1 - Flat
                                  2 - From load flow
                                VPF: Flat prefault bus voltage
                                GENZTYPE: Generator reactance flag
                                  0 - subtransient
                                  1 - transient
-                                 2 - synchronous 
+                                 2 - synchronous
                                IGNORE: a bit field array
                                  bit 1 - ignore load
                                  bit 2 - ignore positive sequence shunt
@@ -846,15 +846,15 @@ def Run1LPFCommand(Params):
                                  1 - Enforce limit 1
                                  2 - Enforce limit 2
                                VCCS: Simulate VCCS flag 1-true; 0-false
-                               MOV: MOV protected series capacitor iterative 
+                               MOV: MOV protected series capacitor iterative
                                     solution flag 1-true; 0-false
-                               MOVITERF: MOV protected series capacitor iterative 
+                               MOVITERF: MOV protected series capacitor iterative
                                            solution acceleration factor
                                MINZMUPAIR: Ignore mutual coupling threshold
                                MVASTYLE: Fault MVA calculatin method
                                GENW3: Simulate type-3 wind generator flag 1-true; 0-false
                                GENW4: Simulate CIR flag 1-true; 0-false
-                               FLTOPTSTR: a space delimited string with all the fault otion fields in the order listed above 
+                               FLTOPTSTR: a space delimited string with all the fault otion fields in the order listed above
                                       PREFAULTV VPF GENZTYPE IGNORE GENILIMIT VCCS MOV MOVITERF MINZMUPAIR MVASTYLE GENW3 GENW4
                 <FLTSPEC>  Each of the <FAULT> nodes can include up to 40 fault specifications to be
                            simulated in the case. Fault specification string in the format described in
@@ -869,9 +869,18 @@ def Run1LPFCommand(Params):
             Remark:
                 When NOfault is not the expected value, call OlxAPIErrorString() for details of simulation error
 
-    Returns:
-        OLXAPI_FAILURE: Failure
-        OLXAPI_OK     : Success
+            Command SNAPSPC: Run OneLiner command Diagram | Snap to state plane coordinates
+            Attributes:
+                 CENTERX - Screen center X in SPC
+                 CENTERY - Screen center Y in SPC
+                 SCALE   - Scaling factor
+                 OPTIONS - Bit array options
+                           Bit 1: Auto scale (compute center X, Y from
+                                  SPC of all objects in the network)
+                           Bit 2: Place all hidden buses using SPC
+            Returns:
+                 OLXAPI_FAILURE: Failure
+                 NOmoves       : Total number of buses placed/moved
     """
     ASPENOlxAPIDLL.OlxAPIRun1LPFCommand.argstype = [c_char_p]
     return ASPENOlxAPIDLL.OlxAPIRun1LPFCommand( encode3(Params) )
@@ -1089,19 +1098,19 @@ def FaultDescriptionEx(index,flag):
         index (c_int): Index of fault simulation.
         flag  (c_int): Output flag
                        [0] Fautl description string only
-                       1   Plus FLTSPCVS on the last line. 
+                       1   Plus FLTSPCVS on the last line.
                            See SIMULATEFAULT for details of FLTSPCVS string
-                       2   Plus FLTOPTSTR on the last line: a string containing the following 
+                       2   Plus FLTOPTSTR on the last line: a string containing the following
                            fault option data fields, separated by blank space:
                            PrefaultV: Prefault voltage flag
                              0 - From linear network solution
-                             1 - Flat 
+                             1 - Flat
                              2 - From load flow
                            FlatBusV: Flat prefault bus voltage
                            GenZType: Generator reactance flag
                              0 - subtransient
                              1 - transient
-                             2 - synchronous 
+                             2 - synchronous
                            IgnoreFlag: a bit array
                              bit 1 - ignore load
                              bit 2 - ignore positive sequence shunt
@@ -1112,9 +1121,9 @@ def FaultDescriptionEx(index,flag):
                              1 - Enforce limit 1
                              2 - Enforce limit 2
                            SimulateCCGen: Simulate VCCS flag 1-true; 0-false
-                           IgnoreMOV: MOV protected series capacitor iterative 
+                           IgnoreMOV: MOV protected series capacitor iterative
                                        solution flag 1-true; 0-false
-                           AccelFactor: MOV protected series capacitor iterative 
+                           AccelFactor: MOV protected series capacitor iterative
                                        solution acceleration factor
                            MuThreshold: Ignore mutual coupling threshold
                            FaultMVAstyle: Fault MVA calculatin method

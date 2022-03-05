@@ -2,11 +2,11 @@
 ASPEN OLX OBJECT LIBRARY
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2022, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __email__     = "support@aspeninc.com"
 __status__    = "Release candidate"
-__version__   = "2.1.4"
+__version__   = "2.2.0"
 #
 import os
 import OlxAPI
@@ -33,23 +33,45 @@ def load_olxapi(dllPath,verbose=True):
     if int(va[0])<=15 and int(va[1])<5:
         raise Exception('Incorrect OlxAPI.dll version: found '+v+va[0]+'.'+va[1]+'. Required V15.5 or higher.')
 #
-def unload_olxapi():
-    """
-    Unload the olxapi.dll
-    """
-    OlxAPI.UnloadOlxAPI()
+def toString(v,nRound=5):
+    """ convert object/value to String """
+    if v is None:
+        return 'None'
+    t = type(v)
+    if t==str:
+        return "'%s'"%v.replace('\n',' ')
+    if t==float:
+        s1 ='%.'+str(nRound)+'g'
+        return s1 % v
+    if t==complex:
+        if v.imag>=0:
+            return '('+ toString(v.real,nRound)+'+' + toString(v.imag,nRound)+'j)'
+        return '('+ toString(v.real,nRound) + toString(v.imag,nRound)+'j)'
+    try:
+        return v.toString()
+    except:
+        pass
+    if t in {list,tuple,set}:
+        s1=''
+        for v1 in v:
+            s1+=toString(v1,nRound)+','
+        if v:
+            s1 = s1[:-1]
+        if t==list:
+            return '['+s1+']'
+        elif t==tuple:
+            return '('+s1+')'
+        else:
+            return '{'+s1+'}'
+    return str(v)
 #
 __K_INI_NETWORK__ = 0
 __CURRENT_FILE_IDX__ = 0
 __INDEX_FAULT__ = -1
 __COUNT_FAULT__ = 0
 __TIERS_FAULT__ = 9
-__INDEX_SIMUL__ = 0
+__INDEX_SIMUL__ = 1
 __TYPEF_SIMUL__ = ''
-#
-def setFltTier(tiers):
-    global __TIERS_FAULT__
-    __TIERS_FAULT__ =  tiers
 #
 class RESULT_FLT:
     def __init__(self,index):
@@ -58,6 +80,8 @@ class RESULT_FLT:
             -index (int): case index   """
         if __COUNT_FAULT__==0:
             raise Exception('\nNo fault simulation result buffer is empty.')
+        if type(index)==RESULT_FLT:
+            index = index.__index__
         if type(index)!=int or index<=0 or index>__COUNT_FAULT__:
             se = '\nRESULT_FLT(index)'
             se += '\n  Case index'
@@ -68,20 +92,21 @@ class RESULT_FLT:
         self.__tiers__ = __TIERS_FAULT__
         self.__index_simul__ = __INDEX_SIMUL__
         if __TYPEF_SIMUL__=='SEA':
-            ra = __getSEA_Result__(index)
-            self.__SEAtime__ = ra[0]
-            self.__fdes__ = str(index)+'. '+ra[1]
-            self.__SEABreaker__ = ra[2]
-            self.__SEADevice__ = ra[3]
+            self.__SEAResult__ = __getSEA_Result__(index)
+            self.__fdes__ = str(index)+'. '+self.__SEAResult__['FaultDesc']
         else:
-            self.__SEAtime__ = None
-            self.__SEABreaker__ = None
-            self.__SEADevice__ = None
             self.__fdes__ = OlxAPI.FaultDescriptionEx(index,0)
     #
-    def __pick__(self):
+    def __check__(self):
         if self.__index_simul__!=__INDEX_SIMUL__:
-            raise Exception('\nRESULT_FLT is not available')
+            se = '\nAll previous RESULT_FLT are not available'
+            se += '\n\t   by a SEA simulation or Classical/Simultaneous with clearPrev=1 has been done'
+            se += '\n\tor by OLCase.close()'
+            se += '\n\tor by OLCase.open() to open a other OLR file'
+            raise Exception(se)
+    #
+    def __pick__(self):
+        self.__check__()
         global __INDEX_FAULT__
         if __INDEX_FAULT__!=self.__index__:
             if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.PickFault(c_int(self.__index__),c_int(self.__tiers__)):
@@ -89,147 +114,148 @@ class RESULT_FLT:
             __INDEX_FAULT__ = self.__index__
     #
     def setScope(self,tiers=9,buses=[]):
+        """ tiers (int): number of tiers around faulted bus to compute solution results
+        """
+        self.__check__()
         self.__tiers__ = tiers
-    #
+        if type(tiers)!=int or tiers<0:
+            se ='\nRESULT_FLT.setScope()\n\ttiers: an integer>=0 is required (got type %s) tiers='%type(tiers).__name__+str(tiers)
+            raise TypeError(se)
     @property
     def FaultDescription(self):
-        """
-        Fault description string
-        """
+        """ (str) Fault description string """
         return self.__fdes__
-    #
     @property
-    def SEAtime(self):
-        """ SEA event time stamp [s]"""
-        self.__pick__()
-        return self.__SEAtime__
-    #
-    @property
-    def SEABreaker(self):
-        """ List of breaker that operated in the current SEA event"""
-        self.__pick__()
-        return self.__SEABreaker__
-    #
-    @property
-    def SEADevice(self):
-        """ List of devices that tripped in the current SEA event"""
-        self.__pick__()
-        return self.__SEADevice__
-    #
-    @property
-    def index(self):
-        """ return The current fault case index """
-        return self.__index__
+    def SEARes(self):
+        """ (dict) SEA Results
+                SEARes['time']      : (float) SEA event time stamp [s]
+                SEARes['currentMax']: (float) Highest phase fault current magnitude at this step
+                SEARes['EventFlag'] : (0/1)   flag showing is this is an user-defined event
+                SEARes['EventDesc'] : (str)   Event Description
+                SEARes['FaultDesc'] : (str)   Fault Description
+                SEARes['breaker']   : []      List breaker that operated in the current SEA event
+                SEARes['device']    : []      List device that tripped in the current SEA event """
+        try:
+            return self.__SEAResult__
+        except:
+            return None
     @property
     def tiers(self):
-        """
-        return Number of tiers in this solution result scope
-        """
+        """ (int) Number of tiers in this solution result scope """
         return self.__tiers__
     #
-    def Current(self,obj=None,style=None):
-        """
-        Fault current on the specified object or at the faulted bus
+    def current(self,obj=None):
+        """ (ABC) Retrieve ABC PHASE post fault current on a object or at the fault
         Args:
-            -obj: A branch object (XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN
-                obj=None: total fault current
-            -style: output style
-                'ABC': ABC phase domain
-                '012': 012 sequence domain
-        Return:
-            [complex]
+            -obj: object None,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN
+                         LOAD,LOADUNIT,SHUNT,SHUNTUNIT,TERMINAL
+        Return:[complex]
+            -obj=None
+                    => [IA,IB,IC] total fault current
+            -obj=GEN,GENUNIT,GENW3,GENW4,CCGEN,LOAD,LOADUNIT,SHUNT,SHUNTUNIT,TERMINAL
+                    => [IA,IB,IC]
+            -obj=LINE,DCLINE2,SERIESRC,SWITCH
+                    => [IA1,IB1,IC1, IA2,IB2,IC2] current from BUS1, BUS2
+            -obj=XFMR,SHIFTER
+                    => [IA1,IB1,IC1,IN1, IA2,IB2,IC2,IN2]
+                      with IN1,IN2 are Neutral current of winding on Bus1, Bus2
+            -obj=XFMR3
+                    => [IA1,IB1,IC1,IN1, IA2,IB2,IC2,IN2, IA3,IB3,IC3,Id3]
+                       with IN1,IN2 are Neutral current of winding on Bus1, Bus2
+                            Id3 circulating current on Bus 3 (3-W Transformer only: Delta)
+        """
+        if obj is not None and type(obj) not in __OLXOBJ_IFLT__:
+            se= '\nRESULT_FLT.current(obj) unsupported object'
+            se +='\n\tSupported object: None'
+            for vi in __OLXOBJ_IFLT__:
+                se+=','+vi.__name__
+            se +='\n\tFound : '+type(obj).__name__
+            raise ValueError(se)
+        self.__pick__()
+        return __currentFault__(obj,style=3)
+    #
+    def currentSeq(self,obj=None):
+        """ (012) Retrieve 012 SEQUENCE post fault current on a object or at the fault
+        Args:
+            -obj: object None,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN
+                         LOAD,LOADUNIT,SHUNT,SHUNTUNIT,TERMINAL
+        Return:[complex]
+            -obj=None
+                    => [I0,I1,I2] total fault current
+            -obj=GEN,GENUNIT,GENW3,GENW4,CCGEN,LOAD,LOADUNIT,SHUNT,SHUNTUNIT,TERMINAL
+                    => [I0,I1,I2]
+            -obj=LINE,DCLINE2,SERIESRC,SWITCH
+                    => [I0_1,I1_1,I2_1 , I0_2,I1_2,I2_2] current from BUS1, BUS2
+            -obj=XFMR,SHIFTER
+                    => [I0_1,I1_1,I2_1,IN1 , I0_2,I1_2,I2_2,IN2]
+                      with IN1,IN2 are Neutral current of winding on Bus1, Bus2
+            -obj=XFMR3
+                    => [I0_1,I1_1,I2_1,IN1 , I0_2,I1_2,I2_2,IN2 , I0_3,I1_3,I2_3,Id3]
+                       with IN1,IN2 are Neutral current of winding on Bus1, Bus2
+                            Id3 circulating current on Bus 3 (3-W Transformer only: Delta)
+        """
+        if obj is not None and type(obj) not in __OLXOBJ_IFLT__:
+            se= '\nRESULT_FLT.currentSeq(obj) unsupported object'
+            se +='\n\tSupported object: None'
+            for vi in __OLXOBJ_IFLT__:
+                se+=','+vi.__name__
+            se +='\n\tFound : '+type(obj).__name__
+            raise ValueError(se)
+        self.__pick__()
+        return __currentFault__(obj,style=1)
+    #
+    def voltage(self,obj):
+        """ (ABC) Retrieve ABC PHASE post-fault voltage of a bus,
+                           or of connected buses of a line, transformer, switch or phase shifter
+        Args:
+            -obj = object BUS,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,XFMR3,TERMINAL
+        return: [voltage complexe]
+        -obj=BUS
+                => [VA,VB,VC]
+        -obj=XFMR3
+                => [VA1,VB1,VC1 , VA2,VB2,VC2 , VA3,VB3,VC3]
+        -obj=XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,TERMINAL
+                => [VA1,VB1,VC1 , VA2,VB2,VC2]
         """
         self.__pick__()
         #
-        if type(obj)==str and style is None:
-            style = obj
-            obj = None
-
-        #
-        if obj is None:
-            hnd = OlxAPIConst.HND_SC
-        else:
-            if type(obj) not in {XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN,TERMINAL}:
-                s1= '\nRESULT_FLT.Current(obj) unsupported object'
-                s1 +='\n\tSupported object: None,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN,TERMINAL'
-                s1 +='\n\tFound : '+type(obj).__name__
-                raise ValueError(s1)
-            hnd = obj.__hnd__
-        #
-        if not(style is None or (type(style)==str and style.upper() in {'ABC','012'})):
-            s1= '\nRESULT_FLT.Current(obj,style) unsupported style'
-            s1 +="\n\tSupported output style: None, 'ABC' or '012'"
-            s1 +='\n\tFound : '+str(style)
-            raise ValueError(s1)
-        #
-        if style=='012':
-            style1 = 1
-        else:
-            style1 = 3
-        #
-        vd12Mag = (c_double*12)(0.0)
-        vd12Ang = (c_double*12)(0.0)
-        #
-        if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.GetSCCurrent( hnd, vd12Mag, vd12Ang, style1):
-            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        #
-        if obj is None or type(obj)==TERMINAL:
-            return __resultComplex__(vd12Mag[:3],vd12Ang[:3])
-        if type(obj)==XFMR3:
-            return __resultComplex__(vd12Mag[:12],vd12Ang[:12])
-        if type(obj)==XFMR:
-            return __resultComplex__(vd12Mag[:8],vd12Ang[:8])
-        if type(obj) in {SHIFTER, LINE, DCLINE2, SERIESRC, SWITCH}:
-            return __resultComplex__(vd12Mag[:6],vd12Ang[:6])
-        return __resultComplex__(vd12Mag[:4],vd12Ang[:4])
+        if type(obj) not in {BUS,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,TERMINAL}:
+            se= '\nRESULT_FLT.voltage(obj) unsupported object'
+            se +='\n\tSupported object: BUS,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,XFMR3,TERMINAL'
+            se +='\n\tFound : '+type(obj).__name__
+            raise ValueError(se)
+        return __voltageFault__(obj,style=3)
     #
-    def Voltage(self,obj,style=None):
-        """  Post fault bus voltage at the specified object
+    def voltageSeq(self,obj):
+        """ (012) Retrieve 012 SEQUENCE post-fault voltage of a bus,
+                           or of connected buses of a line, transformer, switch or phase shifter
         Args:
-            -obj  = object (BUS,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH)
-            -style: output style
-                'ABC': output ABC phase voltage
-                '012': output 012 sequence voltage
+            -obj = object BUS,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,XFMR3
         return: [voltage complexe]
+        -obj=BUS
+                => [V0,V1,V2]
+        -obj=XFMR3
+                => [V0_1,V1_1,V2_1 , V0_2,V1_2,V2_2 , V0_3,V1_3,V2_3]
+        -obj=XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH
+                => [V0_1,V1_1,V2_1 , V0_2,V1_2,V2_2]
         """
         self.__pick__()
         #
         if type(obj) not in {BUS,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH}:
-            s1= '\nRESULT_FLT.Voltage(obj) unsupported device'
-            s1 +='\n\tSupported device: BUS,XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH'
-            s1 +='\n\tFound : '+type(obj).__name__
-            raise ValueError(s1)
-        #
-        if not(style is None or (type(style)==str and style.upper() in {'ABC','012'})):
-            s1= '\nRESULT_FLT.Voltage(obj,style) unsupported style'
-            s1 +="\n\tSupported output style: None, 'ABC' or '012'"
-            s1 +='\n\tFound : '+str(style)
-            raise ValueError(s1)
-        #
-        if style=='012':
-            style1 = 1
-        else:
-            style1 = 3
-        #
-        vd9Mag  = (c_double*9)(0.0)
-        vd9Ang  = (c_double*9)(0.0)
-        if ( OlxAPIConst.OLXAPI_FAILURE == OlxAPI.GetSCVoltage(obj.__hnd__, vd9Mag, vd9Ang, style1) ) :
-            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        #
-        if type(obj) in {XFMR, SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH}:
-            return __resultComplex__(vd9Mag[:6],vd9Ang[:6])
-        if type(obj)==XFMR3:
-            return __resultComplex__(vd9Mag[:9],vd9Ang[:9])
-        return __resultComplex__(vd9Mag[:3],vd9Ang[:3])
+            se= '\nRESULT_FLT.voltageSeq(obj) unsupported object'
+            se +='\n\tSupported object: BUS,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,XFMR3'
+            se +='\n\tFound : '+type(obj).__name__
+            raise ValueError(se)
+        return __voltageFault__(obj,style=1)
     #
-    def OpTime(self,obj,mult,consider_signalonly):
+    def optime(self,obj,mult,signalonly):
         """ Operating time of a protective device or logic scheme in a fault
         Args:
             obj : a protective device or logic scheme
             mult: Relay current multiplying factor
-            consider_signalonly: [int] Consider relay element signal-only flag 1 - Yes; 0 - No
+            signalonly: [int] Consider relay element signal-only flag 1 - Yes; 0 - No
 
-        return: time,roc
+        return: time,code
             - time: relay operating time in seconds
             - code: relay operation code. Required buffer size: 128 bytes.
                     NOP  No operation.
@@ -241,23 +267,24 @@ class RESULT_FLT:
         self.__pick__()
         # check obj
         if type(obj) not in {FUSE,RLYOCG,RLYOCP,RLYDSG,RLYDSP,RECLSR,RLYD,RLYV,SCHEME} or\
-              type(mult) not in {float, int} or consider_signalonly not in {0,1}:
-            s1 = '\nRESULT.OpTime(obj,mult,consider_signalonly)'
-            s1+= '\n\t            Required  Found'
-            s1 +='\n\tobj         RELAY     '+type(obj).__name__ +'   with RELAY=FUSE,RLYOCG,RLYOCP,RLYDSG,RLYDSP,RECLSR,RLYD,RLYV,SCHEME'
-            s1 +='\n\tmult        float     '+str(mult).ljust(6)
-            s1 +=' Relay current multiplying factor'
-            s1 +='\n\tmult        0,1       ' +str(consider_signalonly).ljust(6)
-            s1 +=' Consider relay element signal-only flag'
-            raise ValueError(s1)
+              type(mult) not in {float, int} or signalonly not in {0,1}:
+            se = '\nRESULT_FLT.optime(obj,mult,signalonly)'
+            se += '\n\t             Required  Found'
+            se +='\n\tobj          RELAY     '+type(obj).__name__.ljust(8) +' with RELAY=FUSE,RLYOCG,RLYOCP,RLYDSG,RLYDSP,RECLSR,RLYD,RLYV'
+            se +='\n\tmult         float     '+str(mult).ljust(8)
+            se +=' Relay current multiplying factor'
+            se +='\n\tsignalonly   0,1       ' +str(signalonly).ljust(8)
+            se +=' Consider relay element signal-only flag'
+            raise ValueError(se)
         #
         sx = create_string_buffer(b'\000' * 128)
         triptime = c_double(0.0)
-        if OlxAPIConst.OLXAPI_OK != OlxAPI.GetRelayTime(obj.__hnd__,c_double(mult), c_int(consider_signalonly), byref(triptime),sx):
+        if OlxAPIConst.OLXAPI_OK != OlxAPI.GetRelayTime(obj.__hnd__,c_double(mult), c_int(signalonly), byref(triptime),sx):
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
         #
         return triptime.value, (sx.value).decode("UTF-8")
-RESULT_FAULT = [RESULT_FLT]
+#
+FltSimResult = []
 #
 class OUTAGE:
     def __init__(self,option,G=0):
@@ -269,7 +296,7 @@ class OUTAGE:
             'ALL'        : all at once
         -G: Admittance Outage line grounding (mho) (option=SINGLE-GND)
         """
-        self.__outageLst__ = []
+        self.outageLst = []
         self.option = option
         self.G = G
         self.__check1__()
@@ -325,16 +352,16 @@ class OUTAGE:
                     se+= '\n\t'+__getErrValue__(list,la)
                     raise ValueError(se)
                 __check_currFileIdx__(l1)
-                if not l1.isInList(self.__outageLst__):
-                    self.__outageLst__.append(l1)
+                if not l1.isInList(self.outageLst):
+                    self.outageLst.append(l1)
             return
         if type(la) not in {LINE,XFMR,XFMR3,SERIESRC,SHIFTER,SWITCH}:
             se+= "\n\tRequired: (list)[(str/obj)] in [LINE,XFMR,XFMR3,SERIESRC,SHIFTER,SWITCH]"
             se+= '\n\t'+__getErrValue__(None,la)
             raise ValueError(se)
         __check_currFileIdx__(la)
-        if not la.isInList(self.__outageLst__):
-            self.__outageLst__.append(la)
+        if not la.isInList(self.outageLst):
+            self.outageLst.append(la)
     #
     def build_outageLst(self,obj,tiers,wantedTypes):
         """ Return list of neighboring branches
@@ -377,18 +404,17 @@ class OUTAGE:
         OlxAPI.MakeOutageList(hnd, c_int(tiers-1), wantedT, branchList, pointer(listLen) )
         for i in range(listLen.value):
             r1 = __getOBJ__(branchList[i])
-            if not r1.isInList(self.__outageLst__):
-                self.__outageLst__.append(r1)
-        return self.__outageLst__
+            if not r1.isInList(self.outageLst):
+                self.outageLst.append(r1)
     #
     def toString(self):
         res = '{option='+str(self.option)
         if self.option.upper()=='SINGLE-GND':
             res += ',G='+str(self.G)
-        res += ',List(len=%i)=['%len(self.__outageLst__)
-        for o1 in self.__outageLst__:
+        res += ',List=['
+        for o1 in self.outageLst:
             res+=type(o1).__name__ +','
-        res = res[:-1] +']}'
+        res = res[:-1] +'](len=%i)}'%len(self.outageLst)
         return res
 #
 class SPEC_FLT:
@@ -410,8 +436,8 @@ class SPEC_FLT:
                 se += '\n  All attributes available:'
                 se += '\n\tobj       : (obj) Classical fault object: BUS or RLYGROUP or TERMINAL'
                 se += "\n\tfltApp    : (str) Fault application: 'Bus','Close-in','Close-in-EO','Remote-bus','Line-end','xx%','xx%-EO'"
-                se += "\n\tfltConn   : (str) Fault connection code: '3LG','2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA',"
-                se += "\n\t             '1LG:A','1LG:B','1LG:C','LL:BC','LL:CA','LL:AB','LL:CB','LL:AC','LL:BA'"
+                se += '\n\tfltConn   : (str) Fault connection code:'+str(__OLXOBJ_fltConn__[:7])[:-1]
+                se += ',\n                                            '+str(__OLXOBJ_fltConn__[7:])[1:]
                 se += '\n\tZ         : ([R,X]) Fault impedances in Ohm'
                 se += '\n\toutage    : (OUTAGE) outage option'
                 raise AttributeError(se)
@@ -419,34 +445,36 @@ class SPEC_FLT:
             if sPara1 not in ['obj','fltApp','fltConn','Z']:
                 se = "\nSPEC_FLT.Simultaneous(obj,fltApp,fltConn,Z)\n  has no attribute '%s'"%sPara
                 se += '\n  All attributes available:'
-                se += '\n\tobj       : (obj) Simultaneous fault object'
-                se += '\n\tfltApp    : (str) Simulation option code'
-                se += '\n\tfltConn   : (str) Fault connection code'
+                se += '\n\tobj       : (obj) Simultaneous fault object: BUS,[BUS,BUS],RLYGROUP,TERMINAL'
+                se += "\n\tfltApp    : (str) Simulation option code: 'BUS','CLOSE-IN','BUS2BUS','LINE-END','OUTAGE','1P-OPEN','2P-OPEN','3P-OPEN','xx%'"
+                se += '\n\tfltConn   : (str) Fault connection code:'+str(__OLXOBJ_fltConn__[:7])[:-1]
+                se += ',\n                                            '+str(__OLXOBJ_fltConn__[7:])[1:]
                 se += '\n\tZ         : ([]) Fault impedances in Ohm'
                 raise AttributeError(se)
+
         elif self.__type__=='SEA':
             if sPara1 not in ['obj','runOpt','fltConn','Z','fParam','addParam']:
-                s1 = "\nSPEC_FLT.SEA(obj,fltConn,runOpt,tiers,Z,fParam,addParam)\n  has no attribute '%s'"%sPara
-                s1 += '\n  All attributes available:'
-                s1 += '\n\tobj       : (obj) SEA object'
-                s1 += '\n\tfltConn   : (str) Fault connection code'
-                s1 += '\n\trunOpt    : ([]) simulation option falg'
-                s1 += '\n\tZ         : ([]) Fault impedances in Ohm'
-                s1 += '\n\tfParam    : (float) Intermediate fault location in %'
-                s1 += '\n\taddParam  : ([]) additionnal event for Multiple User-Defined Event'
-                raise AttributeError(s1)
+                se = "\nSPEC_FLT.SEA(obj,fltConn,runOpt,tiers,Z,fParam,addParam)\n  has no attribute '%s'"%sPara
+                se += '\n  All attributes available:'
+                se += '\n\tobj       : (obj) SEA object'
+                se += '\n\tfltConn   : (str) Fault connection code'
+                se += '\n\trunOpt    : ([]) simulation option falg'
+                se += '\n\tZ         : ([]) Fault impedances in Ohm'
+                se += '\n\tfParam    : (float) Intermediate fault location in %'
+                se += '\n\taddParam  : ([]) additionnal event for Multiple User-Defined Event'
+                raise AttributeError(se)
     #
     def __getattr__(self, sPara):
         for k in self.__paraInput__.keys():
             if k.upper()==sPara.upper():
                 return self.__paraInput__[k]
         if self.__type__=='Classical':
-            s1 = "\nSPEC_FLT.Classical has no attribute '%s'"%sPara
+            se = "\nSPEC_FLT.Classical has no attribute '%s'"%sPara
         elif self.__type__=='Simultaneous':
-            s1 = "\nSPEC_FLT.Simultaneous has no attribute '%s'"%sPara
+            se = "\nSPEC_FLT.Simultaneous has no attribute '%s'"%sPara
         elif self.__type__=='SEA':
-            s1 = "\nSPEC_FLT.SEA has no attribute '%s'"%sPara
-        raise AttributeError(s1)
+            se = "\nSPEC_FLT.SEA has no attribute '%s'"%sPara
+        raise AttributeError(se)
     #
     def Classical(obj,fltApp,fltConn,Z=None,outage=None):
         """ Define a specfication for classical fault
@@ -463,9 +491,9 @@ class SPEC_FLT:
             'xx%-EO'
         -fltConn: (str) Fault connection code
             '3LG'
-            '2LG:BC','2LG:CA','2LG:AB'
+            '2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA'
             '1LG:A' ,'1LG:B' ,'1LG:C'
-            'LL:BC' ,'LL:CA' ,'LL:AB'
+            'LL:BC' ,'LL:CA' ,'LL:AB' ,'LL:CB' ,'LL:AC' ,'LL:BA'
         -Z : [R,X] Fault Impedance (Ohm)
         -outage : (OUTAGE) outage option
         """
@@ -516,8 +544,22 @@ class SPEC_FLT:
         #
         return SPEC_FLT(para,'Simultaneous')
     #
-    def SEA_EX(obj,fltApp,fltConn,Z=None):
-        return
+    def SEA_EX(time,fltConn,Z):
+        """ Stepped-Event Analysis with Additional Event
+        Args = (time,obj,fltApp,fltConn,Z)
+        - time: [s] time of Additional Event
+        - fltConn: (str) Fault connection code
+            '3LG'
+            '2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA'
+            '1LG:A' ,'1LG:B' ,'1LG:C'
+            'LL:BC' ,'LL:CA' ,'LL:AB' ,'LL:CB' ,'LL:AC' ,'LL:BA'
+        - Z: [R,X]: Fault Impedance (Ohm)
+        """
+        para = dict()
+        para['time'] = time
+        para['fltConn'] = fltConn
+        para['Z'] = Z
+        return SPEC_FLT(para,'SEA_EX')
     #
     def SEA(obj,fltApp,fltConn,deviceOpt,tiers,Z=None):
         """ Stepped-Event Analysis
@@ -560,64 +602,86 @@ class SPEC_FLT:
             __checkSimultaneous__(self)
         elif self.__type__=='SEA':
             __checkSEA__(self)
+        elif self.__type__=='SEA_EX':
+            __checkSEA_EX__(self)
     #
     def getData(self):
-        #
         if self.__type__=='Classical':
             para1 = __getClassical__(self)
         elif self.__type__=='Simultaneous':
             para1 = __getSimultaneous__(self)
         elif self.__type__=='SEA':
             para1 = __getSEA__(self)
+        elif self.__type__=='SEA_EX':
+            para1 = __getSEA_EX__(self)
         else:
             raise Exception('Error type of SPEC_FLT')
         return para1
     #
     def toString(self):
-        obj = self.__paraInput__['obj']
-        sp = 'obj='+type(obj).__name__
+        try:
+            obj = self.__paraInput__['obj']
+            sp = 'obj='+type(obj).__name__
+        except:
+            sp = ''
         for k,v in self.__paraInput__.items():
+            if sp:
+                sp+=', '
             if k not in {'obj','outage'}:
                 if k=='Z' and v is None:
-                    sp += ', '+k+'=[0]*'
+                    sp += k+'=[0]*'
                 else:
-                    sp += ', '+k+'='+str(v).upper()
+                    sp += k+'='+str(v).upper()
             if k=='outage' and v is not None:
-                sp += ', outage='+v.toString()
-        return sp
+                sp += 'outage='+v.toString()
+        return self.__type__+': '+sp
 #
 class __DATAABSTRACT__:
     def __init__(self,hnd):
         super().__setattr__('__hnd__', hnd)
         super().__setattr__('__currFileIdx__',__CURRENT_FILE_IDX__)
         #
-        res = set()
+        va1,va2 = set(),set()
+        flag1,flag2 = True,False
         for v1 in dir(self):
             if v1.startswith('__') and v1.endswith('__'):
-                break
-            res.add(v1)
+                flag1 = False
+            elif not flag1:
+                flag2 = True
+            if flag1:
+                va1.add(v1)
+            if flag2:
+                va2.add(v1)
         #
         if type(self) in {GENUNIT,SHUNTUNIT,LOADUNIT}:
-            res.discard('MEMO')
+            va1.discard('MEMO')
         if type(self)==TERMINAL:
             for v1 in ['GUID','TAGS','JRNL','MEMO']:
-                res.discard(v1)
-        res = list(res)
-        res.sort()
+                va1.discard(v1)
+        #
+        va1 = list(va1)
+        va1.sort()
+        va2.discard('init')
+        va2 = list(va2)
+        va2.sort()
         super().__setattr__('__paraUDF__', None)
-        super().__setattr__('__allAttributes__', res)
+        super().__setattr__('__allAttributes__', va1)
+        super().__setattr__('__allMethods__', va2)
     #
     def __getName_udf__(self):
         if self.__paraUDF__ is None:
             paraUDF = []
-            #if hnd>0:
-            for idx in range(200):
-                fname= create_string_buffer(b'\000' * OlxAPIConst.MXUDFNAME)
-                fval = create_string_buffer(b'\000' * OlxAPIConst.MXUDF)
-                if OlxAPIConst.OLXAPI_OK == OlxAPI.GetObjUDFByIndex(self.__hnd__,idx,fname,fval):
-                    paraUDF.append(OlxAPI.decode(fname.value))
-                else:
-                    break
+            if type(self)!=DCLINE2: # bug udf dcline
+                for idx in range(200):
+                    fname= create_string_buffer(b'\000' * OlxAPIConst.MXUDFNAME)
+                    fval = create_string_buffer(b'\000' * OlxAPIConst.MXUDF)
+                    try:
+                        if OlxAPIConst.OLXAPI_OK == OlxAPI.GetObjUDFByIndex(self.__hnd__,idx,fname,fval):
+                            paraUDF.append(OlxAPI.decode(fname.value))
+                        else:
+                            break
+                    except:
+                        pass
             super().__setattr__('__paraUDF__', paraUDF)
             self.__allAttributes__.extend(paraUDF)
     #
@@ -627,23 +691,19 @@ class __DATAABSTRACT__:
             sPara = str of parameter
             value : new value
         """
-        super().__setattr__('__spara__', sPara)
         self.changeData(sPara, value)
     #
     def __getattr__(self, name):
-        super().__setattr__('__spara__', name)
         return self.getData(name)
     #
     @property
     def HANDLE(self):
         """ (int) return handle of object"""
         return self.getData('HANDLE')
-
     @property
     def JRNL(self):
         """ (str) Creation and modification log records"""
         return self.getData('JRNL')
-    #
     @property
     def GUID(self):
         """ (str) GUID for object"""
@@ -667,58 +727,18 @@ class __DATAABSTRACT__:
     def isInList(self,la):
         """ check if object in in List/Set of object """
         __check_currFileIdx__(self)
-        if type(la)==list:
+        if type(la) in {list,set}:
             for li in la:
                 __check_currFileIdx__(li)
-                if self.__hnd__==li.__hnd__:
-                    return True
+                try:
+                    if self.__hnd__==li.__hnd__:
+                        return True
+                except:
+                    pass
         return False
-    #
-    def __errorsPara__(self,sPara):
-        #
-        s1 = '\nAll attributes for %s:'%type(self).__name__
-        for a1 in self.getAttributes():
-            s1+= '\n' + a1.ljust(15)+ ' : '
-            try:
-                s1+= OLXOBJ_PARA[type(self).__name__][a1][1]
-            except:
-                pass
-            #
-            if type(self)==RECLSR:
-                if a1.startswith('PH_') :
-                    s1+= OLXOBJ_PARA[type(self).__name__][a1[3:]][2]
-                elif a1.startswith('GR_') :
-                    s1+= OLXOBJ_PARA[type(self).__name__][a1[3:]][3]
-            #
-            if a1 in self.__paraUDF__:
-                s1+='(str) User-Defined Field'
-            elif a1 =='GUID':
-                s1+='(str) GUID'
-            elif a1 =='TAGS':
-                s1+='(str) TAGS'
-            elif a1=='JRNL':
-                s1+='(str) Creation and modification log records'
-            else:
-                s1 += '[' +a1 +']'
-        #
-        if type(self) in OLXOBJ_EQUIPMENTO:
-            s1+= '\n' + 'BUS'.ljust(15)+' : List of Buses of ' +type(self).__name__
-            if type(self) !=DCLINE2:
-                s1+= '\n' + 'RLYGROUP'.ljust(15)+' : List of RLYGROUPS of ' +type(self).__name__
-        #
-        if type(self) in {RLYOCG,RLYOCP,RLYDSG,RLYDSP}:
-            aset = self.getSetting()
-            if sPara in aset.keys():
-                s1 += "\ntry to call %s.getSetting('%s')"%(type(self).__name__,sPara)
-            else:
-                s1 +='\nAll sPara for %s.getSetting(sPara):\n'%type(self).__name__ +str(list(aset.keys()))
-        #
-        s1+= "\n\nAttributeError : '%s' object has no attribute '%s'" %(type(self).__name__,self.__spara__)
-        raise AttributeError (s1)
     #
     def changeData(self,sPara, value):
         """ change Data method """
-        #
         __check_currFileIdx__(self)
         #
         if type(sPara)==list:
@@ -726,23 +746,29 @@ class __DATAABSTRACT__:
                 self.changeData(sPara[i],value[i])
             return
         #
+        sname = type(self).__name__
+        hnd = self.__hnd__
         if type(sPara)!=str :
-            s1 = "\nin call %s.%s = "%(type(self).__name__,str(sPara)) + str(value)
-            s1+= "\n\ttype(sPara): str"
-            s1+= "\n\tfound      : "+type(sPara).__name__
-            raise TypeError(s1)
-        # check type of value
+            se = "\nin call %s.changeData(sPara,value)"%sname
+            se+= "\n\ttype(sPara)    : str"
+            se+= "\n\t"+__getErrValue__(str,sPara)
+            raise ValueError(se)
+        #
         super().__setattr__('__spara__', sPara)
         sPara =  sPara.upper()
+        # GUID/JournalRecord
+        if sPara in {'GUID','JRNL','HANDLE'}:
+            raise Exception('\nWrite Access = NO with %s.%s'%(sname,self.__spara__))
+
         try:
-            paraCode = OLXOBJ_PARA[type(self).__name__][sPara][0]
+            paraCode = __OLXOBJ_PARA__[sname][sPara][0]
         except:
             if type(self)==RECLSR:
                 try:
                     if sPara.startswith('PH_') :
-                        paraCode = OLXOBJ_PARA[type(self).__name__][sPara[3:]][0]
+                        paraCode = __OLXOBJ_PARA__[sname][sPara[3:]][0]
                     elif sPara.startswith('GR_') :
-                        paraCode = OLXOBJ_PARA[type(self).__name__][sPara[3:]][1]
+                        paraCode = __OLXOBJ_PARA__[sname][sPara[3:]][1]
                     else:
                         paraCode = 0
                 except:
@@ -752,69 +778,70 @@ class __DATAABSTRACT__:
         t0 = __getTypeParaCode__(paraCode)
         #
         if paraCode>0:
-            if (t0 != type(value)) and not (t0=='float' and type(value)=='int'):
-                s1 = "\nin call %s.%s = "%(type(self).__name__,str(sPara)) + str(value)
-                s1+= "\n\ttype(value) required : %s"%t0.__name__
-                s1+= "\n\tfound                : "+type(value).__name__
-                raise TypeError(s1)
+            if (t0 != type(value)) and not (t0==float and type(value)==int):
+                se = "\nin call %s.%s = "%(sname,sPara)
+                se+= ("'"+str(value)+"'") if type(value)==str else str(value)
+                se+= "\n\ttype(value) required : %s"%t0.__name__
+                se+= "\n\tfound                : "+type(value).__name__
+                raise TypeError(se)
+            val1 = __setValue__(hnd,paraCode,value)
             try:
-                val1 = __setValue__(self.__hnd__,paraCode,value)
-                if OlxAPIConst.OLXAPI_OK == OlxAPI.SetData( c_int(self.__hnd__), c_int(paraCode), byref(val1) ):
+                if OlxAPIConst.OLXAPI_OK == OlxAPI.SetData( c_int(hnd), c_int(paraCode), byref(val1) ):
                     return
             except:
                 pass
-            raise Exception('\nWrite Access = NO with '+ type(self).__name__+'.'+sPara)
-        # GUID/JournalRecord
-        if sPara in ['GUID','JRNL']:
-            raise Exception('\nWrite Access = NO with '+ type(self).__name__+'.'+sPara)
+            raise Exception('\nWrite Access = NO with %s.%s'%(sname,sPara))
         # Memo
         if sPara=='MEMO':
+            if type(self) in {GENUNIT,SHUNTUNIT,LOADUNIT}:
+                __errorsPara__(self,sPara)
+            #
             if type(self).__name__!=RECLSR:
-                if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(self.__hnd__,value):
-                    s1 = OlxAPI.ErrorString()
-                    if s1=='SetObjMemo failure: Invalid Device Type':
-                        raise Exception('\nWrite Access = NO with '+ type(self).__name__+'.'+sPara)
+                if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(hnd,value):
+                    se = OlxAPI.ErrorString()
+                    if se=='SetObjMemo failure: Invalid Device Type':
+                        raise Exception('\nWrite Access = NO with '+ sname+'.'+sPara)
                     else:
-                        raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+s1)
+                        raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+se)
                 return
             if type(value)!=list or len(value)!=2:
-                s1 = "\nin call %s.%s = "%(type(self).__name__,str(sPara)) + str(value)
-                s1+= "\n\ttype(value) required : [memoP,memoG]"
-                s1+= "\n\tfound                : "+str(value)
-                raise TypeError(s1)
+                se = "\nin call %s.%s = "%(sname,str(sPara)) + str(value)
+                se+= "\n\ttype(value) required : [memoP,memoG]"
+                se+= "\n\tfound                : "+str(value)
+                raise TypeError(se)
             #
-            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(self.__hnd__,str(value[0])): # RECLSRP
-                s1 = OlxAPI.ErrorString()
-                if s1=='SetObjMemo failure: Invalid Device Type':
-                    raise Exception('\nWrite Access = NO with '+ type(self).__name__+'.'+sPara)
+            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(hnd,str(value[0])): # RECLSRP
+                se = OlxAPI.ErrorString()
+                if se=='SetObjMemo failure: Invalid Device Type':
+                    raise Exception('\nWrite Access = NO with '+ sname+'.'+sPara)
                 else:
-                    raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+s1)
-            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(self.__hnd__+1,str(value[1])): # RECLSRG
-                s1 = OlxAPI.ErrorString()
-                if s1=='SetObjMemo failure: Invalid Device Type':
-                    raise Exception('\nWrite Access = NO with '+ type(self).__name__+'.'+sPara)
+                    raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+se)
+            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjMemo(hnd+1,str(value[1])): # RECLSRG
+                se = OlxAPI.ErrorString()
+                if se=='SetObjMemo failure: Invalid Device Type':
+                    raise Exception('\nWrite Access = NO with '+ sname+'.'+sPara)
                 else:
-                    raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+s1)
+                    raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+se)
             return
         # Tags
         if sPara=='TAGS':
-            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjTags(self.__hnd__,value):
+            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.SetObjTags(hnd,value):
                 raise OlxAPI.OlxAPIException('\n'+self.toString()+ '\n'+OlxAPI.ErrorString())
             return
         # UDF
         self.__getName_udf__()
         if sPara in self.__paraUDF__:
             if type(value)!=str:
-                s1 = "\nin call %s.%s = "%(type(self).__name__,str(sPara)) + str(value)
-                s1+= "\n\ttype(value) required : str"
-                s1+= "\n\tfound                : "+type(value).__name__
-                raise TypeError(s1)
-            if OlxAPIConst.OLXAPI_OK==OlxAPI.SetObjUDF(self.__hnd__, sPara, value):
+                se = "\nin call %s.%s = "%(sname,str(sPara)) + str(value)
+                se+= "\n\ttype(value) required : str"
+                se+= "\n\tfound                : "+type(value).__name__
+                raise TypeError(se)
+            if OlxAPIConst.OLXAPI_OK==OlxAPI.SetObjUDF(hnd, sPara, value):
                 return
-            s1 = "\nError in call %s.%s = "%(type(self).__name__,str(sPara)) + str(value)
-            raise Exception(s1)
+            se = "\nError in call %s.%s = "%(sname,str(sPara)) + str(value)
+            raise Exception(se)
         # error
-        self.__errorsPara__(sPara)
+        __errorsPara__(self,sPara)
     #
     def getData(self,sPara=None):
         """
@@ -822,78 +849,84 @@ class __DATAABSTRACT__:
             sPara = None or str or list(str) parameter
                     try ='' to print in console all sPara avalaible
         """
-        if type(self)==TERMINAL:
-            return self.__errorsPara__(sPara)
         __check_currFileIdx__(self)
         #
-        if sPara==None:
-            res = dict()
-            va = self.getAttributes()
-            for sp1 in va:
-                try:
-                    res[sp1] = self.getData(sp1)
-                except:
-                    res[sp1] = None
-            return res
+        if sPara is None:
+            sPara = self.getAttributes()
+            return dict(zip(sPara, self.getData(sPara)))
         #
-        if sPara =='HANDLE':
-            return self.__hnd__
-        #
-        if type(sPara) in [list ,set]:
-            res = []
-            for sp1 in sPara:
-                r1 = self.getData(sp1)
-                res.append(r1)
-            return res
+        if type(sPara) in {list,set,tuple}:
+            return [self.getData(sp1) for sp1 in sPara]
         #
         if type(sPara)!=str:
-            s1 = "\nin call %s.getData(sPara)"%type(self).__name__
-            s1+= "\n\tsPara: None or Str or list(Str)"
-            s1+= "\n\tfound: "+type(sPara).__name__
-            raise TypeError(s1)
+            se = "\nin call %s.getData(sPara)"%type(self).__name__
+            se+= "\n\tRequired sPara     : None or str or list/set/tuple of str"
+            se+= "\n\t"+__getErrValue__(str,sPara)
+            raise TypeError(se)
+        #
+        hnd = self.__hnd__
         super().__setattr__('__spara__', sPara)
         sPara = sPara.upper()
+        if sPara=='HANDLE':
+            return hnd
+        #
+        typ1 = type(self)
+        if typ1==RLYGROUP:
+            if sPara in {'BACKUP','PRIMARY'} :
+                res = []
+                val1 = c_int(0)
+                paraCode = __OLXOBJ_PARA__['RLYGROUP'][sPara][0]
+                while OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(hnd,c_int(paraCode),byref(val1)):
+                    res.append(RLYGROUP(hnd=val1.value))
+                return res
+            if sPara=='TERMINAL':
+                return TERMINAL(hnd=__getDatai__(hnd,OlxAPIConst.RG_nBranchHnd))
+        #
+        if typ1==RECLSR:
+            p1,p2 = sPara[3:],sPara[:3]
+            if p2=='GR_':
+                paraCode = __OLXOBJ_PARA__['RECLSR'][p1][1]
+                res = __getData__(hnd+1,paraCode)
+                return __getOBJ__(res,sPara=sPara)
+            if p2=='PH_':
+                paraCode = __OLXOBJ_PARA__['RECLSR'][p1][0]
+                res = __getData__(hnd,paraCode)
+                return __getOBJ__(res,sPara=sPara)
+        #
         try:
-            paraCode = OLXOBJ_PARA[type(self).__name__][sPara][0]
-            res = __getData__(self.__hnd__,paraCode)
-            return __getOBJ__(res,sPara=sPara)
+            paraCode = __OLXOBJ_PARA__[typ1.__name__][sPara][0]
+            if paraCode!=0:
+                res = __getData__(hnd,paraCode)
+##                if typ1==BUS and sPara=='SLACK':# System slack bus flag: 1-yes; 0-no
+##                    return 1 if res>0 else 0
+                return __getOBJ__(res,sPara=sPara)
         except:
             pass
-        if sPara =='JRNL':
-            return OlxAPI.GetObjJournalRecord(self.__hnd__)
-        if sPara =='GUID':
-            return OlxAPI.GetObjGUID(self.__hnd__)
-        if sPara =='MEMO':
-            s1 = OlxAPI.GetObjMemo(self.__hnd__)
+        if sPara=='JRNL':
+            return OlxAPI.GetObjJournalRecord(hnd)
+        if sPara=='GUID':
+            return OlxAPI.GetObjGUID(hnd)
+        if sPara=='MEMO':
+            s1 = OlxAPI.GetObjMemo(hnd)
             if s1=='GetObjMemo failure: Invalid Device Type':
                 s1= ''
-            if type(self)==RECLSR:
-                s2 =  OlxAPI.GetObjMemo(self.__hnd__+1)
+            if typ1==RECLSR:
+                s2 =  OlxAPI.GetObjMemo(hnd+1)
                 if s2=='GetObjMemo failure: Invalid Device Type':
                     s2= ''
                 return [s1,s2]
             else:
                 return s1
-        if sPara =='TAGS':
-            return OlxAPI.GetObjTags(self.__hnd__)
+        if sPara=='TAGS':
+            return OlxAPI.GetObjTags(hnd)
         #
         if sPara not in self.getAttributes():
-            return self.__errorsPara__(sPara)
-        # for RECLSR
-        if type(self) ==RECLSR:
-            p2 = sPara[:3]
-            if p2=='GR_':
-                paraCode = OLXOBJ_PARA[type(self).__name__][sPara[3:]][1]
-                res = __getData__(self.__hnd__+1,paraCode)
-                return __getOBJ__(res,sPara=sPara)
-            elif p2=='PH_':
-                paraCode = OLXOBJ_PARA[type(self).__name__][sPara[3:]][0]
-                res = __getData__(self.__hnd__,paraCode)
-                return __getOBJ__(res,sPara=sPara)
-        # UDF
-        fval = create_string_buffer(b'\000' * OlxAPIConst.MXUDF)
-        if OlxAPIConst.OLXAPI_OK==OlxAPI.GetObjUDF(self.__hnd__, sPara, fval) :
-            return OlxAPI.decode(fval.value)
+            return __errorsPara__(self,sPara)
+        #
+        if sPara in self.__paraUDF__: # UDF
+            fval = create_string_buffer(b'\000' * OlxAPIConst.MXUDF)
+            if OlxAPIConst.OLXAPI_OK==OlxAPI.GetObjUDF(hnd, sPara, fval) :
+                return OlxAPI.decode(fval.value)
         #
         return getattr(self, sPara)
     #
@@ -905,74 +938,24 @@ class __DATAABSTRACT__:
         return True
     #
     def getAttributes(self):
-        """
-        return list (str) of all attributes
-        """
+        """ [str] list of all attributes """
         __check_currFileIdx__(self)
         self.__getName_udf__()
         return self.__allAttributes__
     #
-    def printData(self):
-        """
-        print all data available for Object
-        """
-        print('\n',self.toString())
-        vals = self.getData()
-        for k,v in vals.items():
-            if type(v)==list:
-                s1 = k.ljust(15) +' : '
-                if v:
-                    s1+='['
-                    for v1 in v:
-                        try:
-                            s1 += v1.toString() +','
-                        except:
-                            if type(v1)==float:
-                                s1 += str(round(v1,5)) +','
-                            else:
-                                s1 += str(v1) +','
-                    s1= s1[:-1] +']'
-                else:
-                    s1 +='[]'
-                print(s1)
-        #
-        for k,v in vals.items():
-            if type(v)!=list:
-                s1 = k.ljust(15) +' : '
-                try:
-                    s1 += v.toString().ljust(15)
-                except:
-                    if type(v)==float:
-                        s1 += str(round(v,5)).ljust(15)
-                    else:
-                        s1 += str(v).replace('\n',' ').ljust(15)
-                try:
-                    s1 += '   '+OLXOBJ_PARA[type(self).__name__][k][1]
-                except:
-                    pass
-                #
-                if type(self) ==RECLSR:
-                    p2 = k[:3]
-                    if p2=='GR_':
-                        s1 += '   '+OLXOBJ_PARA[type(self).__name__][k[3:]][3]
-                    elif p2=='PH_':
-                        s1 += '   '+OLXOBJ_PARA[type(self).__name__][k[3:]][2]
-                print(s1)
-        #
-        if type(self) in {RLYOCG,RLYOCP}:
-            __printRLYSettingOC__(self)
-        elif type(self) in {RLYDSG,RLYDSP}:
-            __printRLYSettingDS__(self)
-    #
     def toString(self,option=0):
-        """
+        """ (str) text description/composed of object
         option = 0 (default)
             return (str) text composed for object
-            BUS   : name and kV
-            EQUIPMENT: Bus, Bus2, (Bus3), Circuit ID and type of a branch
-            RELAY : relay type, name and branch location
-        option != 0
+                BUS   : name and kV
+                EQUIPMENT: Bus, Bus2, (Bus3), Circuit ID and type of a branch
+                RELAY : relay type, name and branch location
+        option = 1
             return (str) text description of object
+        option = 10:
+            str all attribute of object with comment of attribute
+        option = 11:
+            str all attribute of object without comment of attribute, without JRNL
         """
         __check_currFileIdx__(self)
         typ = type(self)
@@ -988,47 +971,95 @@ class __DATAABSTRACT__:
             if id1>=0 and id2>=0:
                 s1 = s1[:id1+1]+'TERMINAL'+s1[id2:]
                 tc1 =  __getDatai__(self.__hnd__,OlxAPIConst.BR_nType)
-                dictL = {OlxAPIConst.TC_LINE:' L',OlxAPIConst.TC_SCAP:' S',OlxAPIConst.TC_PS:' P',\
+                dictL = {OlxAPIConst.TC_LINE:' L',OlxAPIConst.TC_DCLINE2:' DC',OlxAPIConst.TC_SCAP:' S',OlxAPIConst.TC_PS:' P',\
                          OlxAPIConst.TC_XFMR:' T', OlxAPIConst.TC_XFMR3:' X',OlxAPIConst.TC_SWITCH:' W'}
                 s1 += dictL[tc1]
             return s1
-        if typ==BUS:
-            return OlxAPI.FullBusName(self.__hnd__)
-        elif typ in OLXOBJ_EQUIPMENTO:
-            return OlxAPI.FullBranchName(self.__hnd__)
-        elif typ in OLXOBJ_RELAYO or typ==RLYGROUP:
-            return OlxAPI.FullRelayName(self.__hnd__)
-        s1 = OlxAPI.PrintObj1LPF(self.__hnd__)
-        id2 = s1.find(']')
-        return s1[id2+1:]
+        if option==1:
+            if typ==BUS:
+                return OlxAPI.FullBusName(self.__hnd__)
+            elif typ in __OLXOBJ_EQUIPMENTO__:
+                return OlxAPI.FullBranchName(self.__hnd__)
+            elif typ in __OLXOBJ_RELAYO__ or typ==RLYGROUP:
+                return OlxAPI.FullRelayName(self.__hnd__)
+            s1 = OlxAPI.PrintObj1LPF(self.__hnd__)
+            id2 = s1.find(']')
+            return s1[id2+1:]
+        # all data available for Object
+        if option == 10 or option== 11:
+            sres = '\n'+self.toString()
+            vals = self.getData()
+            if option== 11:
+                del vals['HANDLE']
+                try:
+                    del vals['JRNL']
+                except:
+                    pass
+            for k,v in vals.items():
+                if type(v)==list:
+                    sres +='\n'+ k.ljust(15) +' : ' +toString(v)
+            #
+            for k,v in vals.items():
+                if type(v)!=list:
+                    s1 = k.ljust(15) +' : ' +toString(v).ljust(15)
+                    s2=''
+                    if option==10:
+                        try:
+                            s2 = __OLXOBJ_PARA__[type(self).__name__][k][1]
+                        except:
+                            s2 = ''
+                        #
+                        if type(self) ==RECLSR:
+                            p2 = k[:3]
+                            if p2=='GR_':
+                                s2 += __OLXOBJ_PARA__[type(self).__name__][k[3:]][3]
+                            elif p2=='PH_':
+                                s2 += __OLXOBJ_PARA__[type(self).__name__][k[3:]][2]
+                    if len(s1)<37:
+                        sres +='\n'+s1+'   '+s2
+                    else:
+                        if s2:
+                            sres +='\n'+s1+'\n                                    '+s2
+                        else:
+                            sres +='\n'+s1
+            #
+            if type(self) in {RLYOCG,RLYOCP,RLYDSG,RLYDSP}:
+                sres+=__printRLYSetting__(self,cmt=(option==10))
+            return sres
+        raise ValueError ('object.toString(option) with option =0,1,10,11\n\tFound option='+str(option))
 #
 class NETWORK:
     def __init__(self,val1=None,val2=None):
         if val1 is not None or val2 is not None:
-            se = '\nThis version is obsolete\nTry to update OlxObj.py and SamplelxObj.py'
+            se = '\nThe NETWORK class can no longer be instantiated outside the OlxObj module version 2.1.4 or above.'
+            se+= '\nYou must use the global object OLCase instead.'
             raise Exception(se)
         global __K_INI_NETWORK__
         __K_INI_NETWORK__ +=1
         if __K_INI_NETWORK__>1:
             raise Exception('\nCan not init class NETWORK(), try to use OLRCase.')
         #
-        res = []
+        va1,va2 = [],[]
+        flag1,flag2 = True,False
         for v1 in dir(self):
             if v1.startswith('__') and v1.endswith('__'):
-                break
-            res.append(v1)
-        res.sort()
-        super().__setattr__('__allAttributes__',res)
+                flag1 = False
+            elif not flag1:
+                flag2 = True
+            if flag1:
+                va1.append(v1)
+            if flag2:
+                va2.append(v1)
+        va1.sort()
+        va2.sort()
+        super().__setattr__('__allAttributes__',va1)
+        super().__setattr__('__allMethods__',va2)
         super().__setattr__('__scope__', {'isFullNetWork':True})
     #
     def open(self,olrFile,readonly):
-        self.resetScope()
         super().__setattr__('olrFile',olrFile)
-        global __CURRENT_FILE_IDX__
         try:
-            if __CURRENT_FILE_IDX__>0:
-                # Close the network data file that had been loaded previously
-                OlxAPI.CloseDataFile()
+            OlxAPI.CloseDataFile()
         except:
             pass
         #
@@ -1047,18 +1078,24 @@ class NETWORK:
             print(OlxAPI.ErrorString())
         else:
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        #
+        global __CURRENT_FILE_IDX__,__INDEX_SIMUL__,__COUNT_FAULT__,FltSimResult
         __CURRENT_FILE_IDX__ = abs(__CURRENT_FILE_IDX__) + 1
+        __INDEX_SIMUL__ +=1
+        __COUNT_FAULT__ = 0
+        FltSimResult.clear()
+        #
         super().__setattr__('__currFileIdx__',__CURRENT_FILE_IDX__)
+        super().__setattr__('__scope__', {'isFullNetWork':True})
+        super().__setattr__('__allBus__',None)
+        base = __getData__(OlxAPIConst.HND_SYS,OlxAPIConst.SY_dBaseMVA)
+        super().__setattr__('__basemva__',base)
     #
     def __getattr__(self, name):
-        super().__setattr__('__spara__', name)
         return self.getData(name)
     #
     def close(self):
-        """
-        Close the network data file that had been loaded previously
-            return 0 if OK
-        """
+        """ Close the network data file that had been loaded previously return 0 if OK """
         __check_currFileIdx__(self)
         if OlxAPIConst.OLXAPI_OK ==OlxAPI.CloseDataFile():
             global __CURRENT_FILE_IDX__
@@ -1085,8 +1122,8 @@ class NETWORK:
     #
     def findOBJ(self,objStr):
         """
-        find object by GUID or String produced by toString()
-            objStr = GUID or Str
+        find object by GUID or String produced by toString(0)
+            objStr = GUID or STR
             return None if not found
         """
         __check_currFileIdx__(self)
@@ -1107,66 +1144,70 @@ class NETWORK:
         return __getOBJ__(hnd.value,tc=tc)
     #
     def getAttributes(self):
-        """
-        return list (str) of all attributes
-        """
+        """ [str] list of all attributes """
         __check_currFileIdx__(self)
         return self.__allAttributes__
     #
     def getData(self,sPara=None):
         """
-        return data of Network by sPara
+        return data of NETWORK by sPara
         """
         __check_currFileIdx__(self)
         if sPara is None:
             sPara = self.getAttributes()
-            res = dict()
-            for s1 in sPara:
-                res[s1] = self.getData(s1)
-            return res
+            return dict(zip(sPara, self.getData(sPara)))
+        if type(sPara) in {list,set,tuple}:
+            return [self.getData(sp1) for sp1 in sPara]
         #
         if type(sPara)!=str:
-            s1 = "\nin call NETWORK.getData(sPara)"
-            s1+= "\n\tsPara: None or Str or list(Str)"
-            s1+= "\n\tfound: "+type(sPara).__name__
-            raise TypeError(s1)
+            se = "\nin call OLCase.getData(sPara)"
+            se+= "\n\tRequire  sPara: None or str or list(str)"
+            se+= "\n\t"+__getErrValue__(str,sPara)
+            raise TypeError(se)
         #
         super().__setattr__('__spara__', sPara)
         sPara = sPara.upper()
         #
-        if sPara in OLXOBJ_CONST.keys():
+        if sPara in __OLXOBJ_CONST__.keys():
             return __getEquipment__(sPara,self.__scope__)
         #
         if sPara=='OBJCOUNT':
             res = {}
-            for sPara in OLXOBJ_PARA['SYS'].keys():
-                paraCode = OLXOBJ_PARA['SYS'][sPara][0]
+            for sPara in __OLXOBJ_PARA__['SYS'].keys():
+                paraCode = __OLXOBJ_PARA__['SYS'][sPara][0]
                 res[sPara] =  __getData__(OlxAPIConst.HND_SYS,paraCode)
             return res
         if sPara=='BASEMVA':
-            return __getData__(OlxAPIConst.HND_SYS,OlxAPIConst.SY_dBaseMVA)
-        if sPara== 'COMMENT':
+            return self.__basemva__
+        if sPara=='COMMENT':
             return __getData__(OlxAPIConst.HND_SYS,OlxAPIConst.SY_sFComment)
-        if sPara== 'RLYOC':
+        if sPara=='RLYOC':
             res = self.getData('RLYOCG')
             res.extend(self.getData('RLYOCP'))
             return res
-        if sPara== 'RLYDS':
+        if sPara=='RLYDS':
             res = self.getData('RLYDSG')
             res.extend(self.getData('RLYDSP'))
             return res
         #
-        s1='\nAll attributes for NETWORK:'
-        for sp in OLXOBJ_CONST.keys():
-            s1+= '\n'+sp.ljust(15)+' : '+OLXOBJ_CONST[sp][2] +' with NETWORKSCOPE'
-        #
-        for sp in OLXOBJ_PARA['SYS2'].keys():
-            s1+= '\n'+sp.ljust(15)+' : '+OLXOBJ_PARA['SYS2'][sp][1]
-        s1+= "\n\nAttributeError : NETWORK object has no attribute '%s'" %self.__spara__
-        raise AttributeError (s1)
+        if sPara not in self.getAttributes():
+            se='\nAll methods for OLCase: '
+            for sp in self.__allMethods__:
+                se+=sp +'(),'
+            se=se[:-1]+'\n\nAll attributes for OLCase:'
+            for sp in self.__allAttributes__:
+                if sp in __OLXOBJ_CONST__.keys():
+                    se+= '\n'+sp.ljust(15)+' : '+__OLXOBJ_CONST__[sp][2] +' in NETWORK with Scope'
+                elif sp in __OLXOBJ_PARA__['SYS2'].keys():
+                    se+= '\n'+sp.ljust(15)+' : '+__OLXOBJ_PARA__['SYS2'][sp][1]
+                else:
+                    se+= '\n'+sp.ljust(15)
+            se+= "\nAttributeError  : OLCase has no attribute/method '%s'" %self.__spara__
+            raise AttributeError (se)
+        return getattr(self, sPara)
     #
     def applyScope(self,areaNum=[],zoneNum=[],optionTie=0,kV=[]):
-        """Scope for Network Access
+        """Scope for NETWORK Access
             areaNum  []: List of area Number
             zoneNum  []: List of zone Number
             optionTie  : 0-strictly in areaNum/zoneNum
@@ -1183,7 +1224,7 @@ class NETWORK:
     #
     def resetScope(self):
         """
-        reset Scope: All Network Access
+        reset Scope: All NETWORK Access
         """
         self.__scope__ = {'isFullNetWork':True}
     #
@@ -1216,7 +1257,7 @@ class NETWORK:
         try:
             return LINE(val1,val2,val3)
         except:
-            __checkArgsBr__('findLINE',val1,val2,val3)
+            #__checkArgsBr__('findLINE',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1228,7 +1269,7 @@ class NETWORK:
         try:
             return DCLINE2(val1,val2,val3)
         except:
-            __checkArgsBr__('findDCLINE',val1,val2,val3)
+            #__checkArgsBr__('findDCLINE',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1240,7 +1281,7 @@ class NETWORK:
         try:
             return XFMR(val1,val2,val3)
         except:
-            __checkArgsBr__('findXFMR',val1,val2,val3)
+            #__checkArgsBr__('findXFMR',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1252,7 +1293,7 @@ class NETWORK:
         try:
             return XFMR3(val1,val2,val3)
         except:
-            __checkArgsBr__('findXFMR3',val1,val2,val3)
+            #__checkArgsBr__('findXFMR3',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1264,7 +1305,7 @@ class NETWORK:
         try:
             return SHIFTER(val1,val2,val3)
         except:
-            __checkArgsBr__('findSHIFTER',val1,val2,val3)
+            #__checkArgsBr__('findSHIFTER',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1276,7 +1317,7 @@ class NETWORK:
         try:
             return SERIESRC(val1,val2,val3)
         except:
-            __checkArgsBr__('findSERIESRC',val1,val2,val3)
+            #__checkArgsBr__('findSERIESRC',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
@@ -1288,12 +1329,12 @@ class NETWORK:
         try:
             return SWITCH(val1,val2,val3)
         except:
-            __checkArgsBr__('findSWITCH',val1,val2,val3)
+            #__checkArgsBr__('findSWITCH',val1,val2,val3)
             __check_currFileIdx1__()
             return None
     #
     def findTERMINAL(self,b1=None,b2=None,sType=None,CID=None):
-        """ TERMINAL init (return None if not found):
+        """ find TERMINAL (return None if not found):
             OLCase.findTERMINAL(b1,b2,sType,CID)   OLCase.findTERMINAL(b1,b2,'LINE','1')
                 b1,b2 : (BUS)
                 sType : (str/obj) 'XFMR3', 'XFMR', 'SHIFTER', 'LINE', 'DCLINE2', 'SERIESRC', 'SWITCH'
@@ -1314,6 +1355,42 @@ class NETWORK:
             return GEN(val1,val2)
         except:
             __checkArgs1__('findGEN',val1,val2)
+            __check_currFileIdx1__()
+            return None
+    #
+    def findGENW3(self,val1=None,val2=None):
+        """ find GENW3 (return None if not found):
+                OLCase.findGENW3(GUID)        OLCase.findGENW3('{124fe30b-2b6a-4ac7-9e16-0d4da642a6e9}'
+                OLCase.findGENW3(STR)         OLCase.findGENW3("[GENW3] 'BUS3' 33 kV")
+                OLCase.findGENW3(name,kV)     OLCase.findGENW3('CLAYTOR',132)   """
+        try:
+            return GENW3(val1,val2)
+        except:
+            __checkArgs1__('findGENW3',val1,val2)
+            __check_currFileIdx1__()
+            return None
+    #
+    def findGENW4(self,val1=None,val2=None):
+        """ find GENW4 (return None if not found):
+                OLCase.findGENW4(GUID)        OLCase.findGENW4('{124fe30b-2b6a-4ac7-9e16-0d4da642a6e9}'
+                OLCase.findGENW4(STR)         OLCase.findGENW4("[GENW4] 'BUS3' 33 kV")
+                OLCase.findGENW4(name,kV)     OLCase.findGENW4('CLAYTOR',132)   """
+        try:
+            return GENW4(val1,val2)
+        except:
+            __checkArgs1__('findGENW4',val1,val2)
+            __check_currFileIdx1__()
+            return None
+    #
+    def findCCGEN(self,val1=None,val2=None):
+        """ find CCGEN (return None if not found):
+                OLCase.findCCGEN(GUID)        OLCase.findCCGEN('{124fe30b-2b6a-4ac7-9e16-0d4da642a6e9}'
+                OLCase.findCCGEN(STR)         OLCase.findCCGEN("[CCGENUNIT] 'BUS5' 13 kV")
+                OLCase.findCCGEN(name,kV)     OLCase.findCCGEN('CLAYTOR',132)   """
+        try:
+            return CCGEN(val1,val2)
+        except:
+            __checkArgs1__('findCCGEN',val1,val2)
             __check_currFileIdx1__()
             return None
     #
@@ -1352,159 +1429,447 @@ class NETWORK:
             __checkArgs1__('findLOAD',val1,val2)
             __check_currFileIdx1__()
             return None
+    #
+    def findGENUNIT(self,val1):
+        """ find GENUNIT (return None if not found):
+                OLCase.findGENUNIT(GUID)    OLCase.findGENUNIT('{b933fc57-691f-4b24-a5bf-b9000c082d14}'
+                OLCase.findGENUNIT(STR)     OLCase.findGENUNIT("[GENUNIT]  1@2 'CLAYTOR' 132 kV") """
+        try:
+            return GENUNIT(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findLOADUNIT(self,val1):
+        """ find LOADUNIT (return None if not found):
+                OLCase.findLOADUNIT(GUID)    OLCase.findLOADUNIT('{61e0ebc9-96ef-4cec-b8ed-d91ece2d9b3c}'
+                OLCase.findLOADUNIT(STR)     OLCase.findLOADUNIT("[LOADUNIT]  1@17 'WASHINGTON' 33 kV") """
+        try:
+            return LOADUNIT(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findSHUNTUNIT(self,val1):
+        """ find SHUNTUNIT (return None if not found):
+                OLCase.findSHUNTUNIT(GUID)    OLCase.findSHUNTUNIT('{61e0ebc9-96ef-4cec-b8ed-d91ece2d9b3c}'
+                OLCase.findSHUNTUNIT(STR)     OLCase.findSHUNTUNIT("[CAPUNIT]  1@21 'IOWA' 33 kV")  """
+        try:
+            return SHUNTUNIT(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYGROUP(self,val1):
+        """ find RLYGROUP (return None if not found):
+                OLCase.findRLYGROUP(GUID)  OLCase.findRLYGROUP('{369fce04-353b-4c81-8e8e-9c4d97784206}'
+                OLCase.findRLYGROUP(STR)   OLCase.findRLYGROUP("[RELAYGROUP] 6 'NEVADA' 132 kV-8 'REUSENS' 132 kV 1 L")  """
+        try:
+            return RLYGROUP(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYOCG(self,val1):
+        """ find RLYOCG (return None if not found):
+                OLCase.findRLYOCG(GUID)  OLCase.findRLYOCG('{b4e006f6-6ccb-497e-8828-8938df46bd4a}'
+                OLCase.findRLYOCG(STR)   OLCase.findRLYOCG("[OCRLYG]  NV-G1@6 'NEVADA' 132 kV-8 'REUSENS' 132 kV 1 L") """
+        try:
+            return RLYOCG(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYOCP(self,val1):
+        """ find RLYOCP (return None if not found):
+                OLCase.findRLYOCP(GUID)  OLCase.findRLYOCP('{b4e006f6-6ccb-497e-8828-8938df46bd4a}'
+                OLCase.findRLYOCP(STR)   OLCase.findRLYOCP("[OCRLYP]  NV-P1@6 'NEVADA' 132 kV-8 'REUSENS' 132 kV 1 L") """
+        try:
+            return RLYOCP(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findFUSE(self,val1):
+        """ find FUSE (return None if not found):
+                OLCase.findFUSE(GUID)  OLCase.findFUSE('{d67118b8-bb8c-4f37-9765-bf3c49cb2cba}'
+                OLCase.findFUSE(STR)   OLCase.findFUSE("[FUSE]  NV Fuse@6 'NEVADA' 132 kV-4 'TENNESSEE' 132 kV 1 P") """
+        try:
+            return FUSE(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYDSG(self,val1):
+        """ find RLYDSG (return None if not found):
+                OLCase.findRLYDSG(GUID)  OLCase.findRLYDSG('{a004766f-125d-47b6-b9cd-70cb254f2a59}'
+                OLCase.findRLYDSG(STR)   OLCase.findRLYDSG("[DSRLYG]  NV_Reusen G1@6 'NEVADA' 132 kV-8 'REUSENS' 132 kV 1 L")"""
+        try:
+            return RLYDSG(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYDSP(self,val1):
+        """ find RLYDSP (return None if not found):
+                OLCase.findRLYDSP(GUID)  OLCase.findRLYDSP('{a004766f-125d-47b6-b9cd-70cb254f2a59}'
+                OLCase.findRLYDSP(STR)   OLCase.findRLYDSP("[DSRLYP]  GCXTEST@6 'NEVADA' 132 kV-2 'CLAYTOR' 132 kV 1 L")"""
+        try:
+            return RLYDSP(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYD(self,val1):
+        """ find RLYD (return None if not found):
+                OLCase.findRLYD(GUID)  OLCase.findRLYD('{9e8f6488-6bb0-4e3a-9f4f-ac878d182f35}'
+                OLCase.findRLYD(STR)   OLCase.findRLYD("[DEVICEDIFF]  @2 'CLAYTOR' 132 kV-6 'NEVADA' 132 kV 1 L")"""
+        try:
+            return RLYD(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRLYV(self,val1):
+        """ find RLYV (return None if not found):
+                OLCase.findRLYV(GUID)  OLCase.findRLYV('{9e8f6488-6bb0-4e3a-9f4f-ac878d182f35}'
+                OLCase.findRLYV(STR)   OLCase.findRLYV("[DEVICEVR]  @2 'CLAYTOR' 132 kV-6 'NEVADA' 132 kV 1 L")"""
+        try:
+            return RLYV(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findRECLSR(self,val1):
+        """ find RECLSR (return None if not found):
+                OLCase.findRECLSR(GUID)  OLCase.findRECLSR('{9e8f6488-6bb0-4e3a-9f4f-ac878d182f35}'
+                OLCase.findRECLSR(STR)   OLCase.findRECLSR("[RECLSRP]  @2 'CLAYTOR' 132 kV-6 'NEVADA' 132 kV 1 L") """
+        try:
+            return RECLSR(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findSCHEME(self,val1):
+        """ find SCHEME (return None if not found):
+                OLCase.findSCHEME(GUID)  OLCase.findSCHEME('{9e8f6488-6bb0-4e3a-9f4f-ac878d182f35}'
+                OLCase.findSCHEME(STR)   OLCase.findSCHEME("[PILOT]  272-POTT-SEL421G@2 'CLAYTOR' 132 kV-6 'NEVADA' 132 kV 1 L") """
+        try:
+            return SCHEME(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findZCORRECT(self,val1):
+        """ find ZCORRECT (return None if not found):
+                OLCase.findZCORRECT(GUID)  OLCase.findZCORRECT('{9e8f6488-6bb0-4e3a-9f4f-ac878d182f35}'
+                OLCase.findZCORRECT(STR)   OLCase.findZCORRECT("[ZCORRECT]...") """
+        try:
+            return ZCORRECT(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
+    #
+    def findBREAKER(self,val1):
+        """ find ZCORRECT (return None if not found):
+                OLCase.findBREAKER(GUID)  OLCase.findBREAKER('{369fce04-353b-4c81-8e8e-9c4d97784206}'
+                OLCase.findBREAKER(STR)   OLCase.findBREAKER("[BREAKER]  1E82A@ 6 'NEVADA' 132 kV") """
+        try:
+            return BREAKER(val1)
+        except:
+            __check_currFileIdx1__()
+            return None
 #$ASPEN$ CODE GENERATED AUTOMATIC by OlxObj\genCodeOlxObj.py START
 
     @property
     def BASEMVA(self):
-        """ return (float) System MVA base """
+        """ (float) NETWORK System MVA base """
         return self.getData('BASEMVA')
     @property
     def COMMENT(self):
-        """ return (str) Network comment """
+        """ (str) NETWORK comment """
         return self.getData('COMMENT')
     @property
     def OBJCOUNT(self):
-        """ return (dict) number of object in all network """
+        """ (dict) Number of object in NETWORK """
         return self.getData('OBJCOUNT')
     @property
     def BREAKER(self):
-        """ return [BREAKER] List of Breakers """
-        return self.getData('BREAKER')
+        """ [BREAKER] List Breakers in NETWORK """
+        res = []
+        for b1 in self.getData('BREAKER'):
+            res.append(BREAKER(hnd=b1.__hnd__))
+        return res
     @property
     def BUS(self):
-        """ return [BUS] List of Buses """
-        return self.getData('BUS')
+        """ [BUS] List Buses in NETWORK """
+        res = []
+        for b1 in self.getData('BUS'):
+            res.append(BUS(hnd=b1.__hnd__))
+        return res
+
     @property
     def CCGEN(self):
-        """ return [CCGEN] List of Voltage Controlled Current Sources """
-        return self.getData('CCGEN')
+        """ [CCGEN] List Voltage Controlled Current Sources in NETWORK """
+        res = []
+        for b1 in self.getData('CCGEN'):
+            res.append(CCGEN(hnd=b1.__hnd__))
+        return res
     @property
     def DCLINE2(self):
-        """ return [DCLINE2] List of DC Lines """
-        return self.getData('DCLINE2')
+        """ [DCLINE2] List DC Lines in NETWORK """
+        res = []
+        for b1 in self.getData('DCLINE2'):
+            res.append(DCLINE2(hnd=b1.__hnd__))
+        return res
     @property
     def FUSE(self):
-        """ return [FUSE] List of Fuses """
-        return self.getData('FUSE')
+        """ [FUSE] List Fuses in NETWORK """
+        res = []
+        for b1 in self.getData('FUSE'):
+            res.append(FUSE(hnd=b1.__hnd__))
+        return res
     @property
     def GEN(self):
-        """ return [GEN] List of Generators """
-        return self.getData('GEN')
+        """ [GEN] List Generators in NETWORK """
+        res = []
+        for b1 in self.getData('GEN'):
+            res.append(GEN(hnd=b1.__hnd__))
+        return res
     @property
     def GENUNIT(self):
-        """ return [GENUNIT] List of Generator units """
-        return self.getData('GENUNIT')
+        """ [GENUNIT] List Generator units in NETWORK """
+        res = []
+        for b1 in self.getData('GENUNIT'):
+            res.append(GENUNIT(hnd=b1.__hnd__))
+        return res
     @property
     def GENW3(self):
-        """ return [GENW3] List of Type-3 Wind Plants """
-        return self.getData('GENW3')
+        """ [GENW3] List Type-3 Wind Plants in NETWORK """
+        res = []
+        for b1 in self.getData('GENW3'):
+            res.append(GENW3(hnd=b1.__hnd__))
+        return res
     @property
     def GENW4(self):
-        """ return [GENW4] List of Converter-Interfaced Resources """
-        return self.getData('GENW4')
+        """ [GENW4] List Converter-Interfaced Resources in NETWORK """
+        res = []
+        for b1 in self.getData('GENW4'):
+            res.append(GENW4(hnd=b1.__hnd__))
+        return res
     @property
     def LINE(self):
-        """ return [LINE] List of Transmission Lines """
-        return self.getData('LINE')
+        """ [LINE] List Transmission Lines in NETWORK """
+        res = []
+        for b1 in self.getData('LINE'):
+            res.append(LINE(hnd=b1.__hnd__))
+        return res
     @property
     def LOAD(self):
-        """ return [LOAD] List of Loads """
-        return self.getData('LOAD')
+        """ [LOAD] List Loads in NETWORK """
+        res = []
+        for b1 in self.getData('LOAD'):
+            res.append(LOAD(hnd=b1.__hnd__))
+        return res
     @property
     def LOADUNIT(self):
-        """ return [LOADUNIT] List of Load units """
-        return self.getData('LOADUNIT')
+        """ [LOADUNIT] List Load units in NETWORK """
+        res = []
+        for b1 in self.getData('LOADUNIT'):
+            res.append(LOADUNIT(hnd=b1.__hnd__))
+        return res
     @property
     def MULINE(self):
-        """ return [MULINE] List of Mutual Pairs """
-        return self.getData('MULINE')
+        """ [MULINE] List Mutual Pairs in NETWORK """
+        res = []
+        for b1 in self.getData('MULINE'):
+            res.append(MULINE(hnd=b1.__hnd__))
+        return res
     @property
     def RECLSR(self):
-        """ return [RECLSR] List of Reclosers """
-        return self.getData('RECLSR')
+        """ [RECLSR] List Reclosers in NETWORK """
+        res = []
+        for b1 in self.getData('RECLSR'):
+            res.append(RECLSR(hnd=b1.__hnd__))
+        return res
     @property
     def RLYD(self):
-        """ return [RLYD] List of Differential relays """
-        return self.getData('RLYD')
+        """ [RLYD] List Differential relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYD'):
+            res.append(RLYD(hnd=b1.__hnd__))
+        return res
     @property
     def RLYDSG(self):
-        """ return [RLYDSG] List of DS Ground relays """
-        return self.getData('RLYDSG')
+        """ [RLYDSG] List DS Ground relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYDSG'):
+            res.append(RLYDSG(hnd=b1.__hnd__))
+        return res
     @property
     def RLYDSP(self):
-        """ return [RLYDSP] List of DS Phase relays """
-        return self.getData('RLYDSP')
+        """ [RLYDSP] List DS Phase relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYDSP'):
+            res.append(RLYDSP(hnd=b1.__hnd__))
+        return res
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] List of Relay groups """
-        return self.getData('RLYGROUP')
+        """ [RLYGROUP] List Relay groups in NETWORK """
+        res = []
+        for b1 in self.getData('RLYGROUP'):
+            res.append(RLYGROUP(hnd=b1.__hnd__))
+        return res
     @property
     def RLYOCG(self):
-        """ return [RLYOCG] List of OC Ground relays """
-        return self.getData('RLYOCG')
+        """ [RLYOCG] List OC Ground relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYOCG'):
+            res.append(RLYOCG(hnd=b1.__hnd__))
+        return res
     @property
     def RLYOCP(self):
-        """ return [RLYOCP] List of OC Phase relays """
-        return self.getData('RLYOCP')
+        """ [RLYOCP] List OC Phase relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYOCP'):
+            res.append(RLYOCP(hnd=b1.__hnd__))
+        return res
     @property
     def RLYV(self):
-        """ return [RLYV] List of Voltage relays """
-        return self.getData('RLYV')
+        """ [RLYV] List Voltage relays in NETWORK """
+        res = []
+        for b1 in self.getData('RLYV'):
+            res.append(RLYV(hnd=b1.__hnd__))
+        return res
     @property
     def SCHEME(self):
-        """ return [SCHEME] List of Logic schemes  """
-        return self.getData('SCHEME')
+        """ [SCHEME] List Logic schemes in NETWORK """
+        res = []
+        for b1 in self.getData('SCHEME'):
+            res.append(SCHEME(hnd=b1.__hnd__))
+        return res
     @property
     def SERIESRC(self):
-        """ return [SERIESRC] List of Series capacitor/reactor """
-        return self.getData('SERIESRC')
+        """ [SERIESRC] List Series capacitor/reactor in NETWORK """
+        res = []
+        for b1 in self.getData('SERIESRC'):
+            res.append(SERIESRC(hnd=b1.__hnd__))
+        return res
     @property
     def SHIFTER(self):
-        """ return [SHIFTER] List of Phase Shifters """
-        return self.getData('SHIFTER')
+        """ [SHIFTER] List Phase Shifters in NETWORK """
+        res = []
+        for b1 in self.getData('SHIFTER'):
+            res.append(SHIFTER(hnd=b1.__hnd__))
+        return res
     @property
     def SHUNT(self):
-        """ return [SHUNT] List of Shunts """
-        return self.getData('SHUNT')
+        """ [SHUNT] List Shunts in NETWORK """
+        res = []
+        for b1 in self.getData('SHUNT'):
+            res.append(SHUNT(hnd=b1.__hnd__))
+        return res
     @property
     def SHUNTUNIT(self):
-        """ return [SHUNTUNIT] List of Shunt units """
-        return self.getData('SHUNTUNIT')
+        """ [SHUNTUNIT] List Shunt units in NETWORK """
+        res = []
+        for b1 in self.getData('SHUNTUNIT'):
+            res.append(SHUNTUNIT(hnd=b1.__hnd__))
+        return res
     @property
     def SVD(self):
-        """ return [SVD] List of Switched Shunt """
-        return self.getData('SVD')
+        """ [SVD] List Switched Shunt in NETWORK """
+        res = []
+        for b1 in self.getData('SVD'):
+            res.append(SVD(hnd=b1.__hnd__))
+        return res
     @property
     def SWITCH(self):
-        """ return [SWITCH] List of Switches """
-        return self.getData('SWITCH')
+        """ [SWITCH] List Switches in NETWORK """
+        res = []
+        for b1 in self.getData('SWITCH'):
+            res.append(SWITCH(hnd=b1.__hnd__))
+        return res
     @property
     def XFMR(self):
-        """ return [XFMR] List of 2-Windings Transformers """
-        return self.getData('XFMR')
+        """ [XFMR] List 2-Windings Transformers in NETWORK """
+        res = []
+        for b1 in self.getData('XFMR'):
+            res.append(XFMR(hnd=b1.__hnd__))
+        return res
     @property
     def XFMR3(self):
-        """ return [XFMR3] List of 3-Windings Transformers """
-        return self.getData('XFMR3')
+        """ [XFMR3] List 3-Windings Transformers in NETWORK """
+        res = []
+        for b1 in self.getData('XFMR3'):
+            res.append(XFMR3(hnd=b1.__hnd__))
+        return res
     @property
     def ZCORRECT(self):
-        """ return [ZCORRECT] List of Impedance correction table """
-        return self.getData('ZCORRECT')
+        """ [ZCORRECT] List Impedance correction tables in NETWORK """
+        res = []
+        for b1 in self.getData('ZCORRECT'):
+            res.append(ZCORRECT(hnd=b1.__hnd__))
+        return res
     @property
     def RLYOC(self):
-        """ [RLYOCG+RLYOCP] list of all Over Current Relay """
-        return self.getData('RLYOC')
+        """ [RLYOCG+RLYOCP] List Over Current Relays in NETWORK """
+        res = self.RLYOCG
+        res.extend(self.RLYOCP)
+        return res
     @property
     def RLYDS(self):
-        """ [RLYDSG+RLYDSP] list of all Distance Relay """
-        return self.getData('RLYDS')
+        """ [RLYDSG+RLYDSP] List Distance Relays in NETWORK """
+        res = self.RLYDSG
+        res.extend(self.RLYDSP)
+        return res
+    @property
+    def AREA(self):
+        """ [AREA] NETWORK list of Area """
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        seta = set()
+        for b1 in self.__allBus__:
+            seta.add(b1.getData('AREANO'))
+        return [AREA(a1) for a1 in sorted(list(seta))]
+    @property
+    def AREANO(self):
+        """ [int] NETWORK list of Area Number """
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        seta = set()
+        for b1 in self.__allBus__:
+            seta.add(b1.getData('AREANO'))
+        return sorted(list(seta))
+    @property
+    def ZONE(self):
+        """ [ZONE] NETWORK list of Zone """
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        seta = set()
+        for b1 in self.__allBus__:
+            seta.add(b1.getData('ZONENO'))
+        return [ZONE(a1) for a1 in sorted(list(seta))]
+    @property
+    def ZONENO(self):
+        """ [init] NETWORK list of Zone Number """
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        seta = set()
+        for b1 in self.__allBus__:
+            seta.add(b1.getData('ZONENO'))
+        return sorted(list(seta))
+    @property
+    def KV(self):
+        """ [float] NETWORK list of KV Nominal """
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        seta = set()
+        for b1 in self.__allBus__:
+            seta.add(b1.KV)
+        return sorted(list(seta),reverse=True)
     #
-    def faultNumber(self):
-        """return number of fault in buffer """
-        __check_currFileIdx__(self)
-        return __COUNT_FAULT__
-    #
-    def simulateFault(self,specFlt,clearPrev=1):
+    def simulateFault(self,specFlt,clearPrev=0):
         """ Run simulation of a classical fault, simultaneous fault or stepped-event analysis
         Args:
             specFlt: Classical/Simultaneous/Stepped-Event Analysis specfication(s)
@@ -1514,15 +1879,15 @@ class NETWORK:
             clearPrev : (0/1) clear previous result flag
         """
         # check
-        s1 = '\nOLCase.SimulateFault(specFlt,clearPrev)'
+        se = '\nOLCase.SimulateFault(specFlt,clearPrev)'
         if type(clearPrev) != int or clearPrev not in {0,1}:
-            s1+= '\n  clearPrev : clear previous result flag'
-            s1+= '\n\tRequired          : (int) 0 or 1 '
+            se+= '\n  clearPrev : clear previous result flag'
+            se+= '\n\tRequired          : (int) 0 or 1 '
             if type(clearPrev)==int:
-                s1+= "\n\tFound (ValueError): %i"%clearPrev
+                se+= "\n\tFound (ValueError): %i"%clearPrev
             else:
-                s1+= '\n\tFound (ValueError): (%s)'%type(clearPrev).__name__ + ' ' +str(clearPrev)
-            raise ValueError(s1)
+                se+= '\n\tFound (ValueError): (%s)'%type(clearPrev).__name__ + ' ' +str(clearPrev)
+            raise ValueError(se)
         #
         if type(specFlt)!=SPEC_FLT or specFlt.__type__ not in {'Classical','Simultaneous','SEA'}:
             flag = type(specFlt)==list and len(specFlt)>0
@@ -1538,91 +1903,211 @@ class NETWORK:
                 flag = flag1 or flag2
             #
             if not flag:
-                s1 += '\n  specFlt : Fault Specfication'
-                s1 += '\n\tRequired : '
-                s1 += "\n\t\tSPEC_FLT ('Classical','Simultaneous','SEA') or"
-                s1 += "\n\t\t[SPEC_FLT] ('Simultaneous') or"
-                s1 += "\n\t\t[sp_0,sp_i,...] sp_0=SPEC_FLT('SEA') sp_i=SPEC_FLT('SEA_EX')"
-                s1 += '\n\tFound (ValueError) : '
+                se += '\n  specFlt : Fault Specfication'
+                se += '\n\tRequired : '
+                se += "\n\t\t   SPEC_FLT ('Classical','Simultaneous','SEA')"
+                se += "\n\t\tor [SPEC_FLT] ('Simultaneous')"
+                se += "\n\t\tor [sp_0,sp_i,...] sp_0=SPEC_FLT('SEA') sp_i=SPEC_FLT('SEA_EX')"
+                se += '\n\tFound (ValueError) : '
                 if type(specFlt)!= list:
-                    s1+= type(specFlt).__name__
+                    se+= type(specFlt).__name__
                 else:
-                    s1+='['
+                    se+='['
                     for sp1 in specFlt:
                         if type(sp1)==SPEC_FLT:
-                            s1+="SPEC_FLT('%s')"%sp1.__type__ +','
+                            se+="SPEC_FLT('%s')"%sp1.__type__ +','
                         else:
-                            s1+=type(sp1).__name__+','
-                    s1=s1[:-1]+']'
-                raise ValueError(s1)
+                            se+=type(sp1).__name__+','
+                    se=se[:-1]+']'
+                raise ValueError(se)
         #
-        global __INDEX_SIMUL__,__COUNT_FAULT__,__INDEX_FAULT__,__TYPEF_SIMUL__,RESULT_FAULT
-        if clearPrev==1 or (type(specFlt)==SPEC_FLT and specFlt.__type__=='SEA') or \
-           (type(specFlt)==list and specFlt[0].__type__=='SEA') :
-            __INDEX_SIMUL__ +=1
-        # run Classical
-        if type(specFlt)==SPEC_FLT:
-            if specFlt.__type__=='Classical':
-                specFlt.checkData()
-                para = specFlt.getData()
-                if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.DoFault(para['hnd'],para['fltConn'],para['fltOpt'],para['outageOpt'],para['outageLst'],para['R'],para['X'],c_int(clearPrev)):
-                    raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-                if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.PickFault(c_int(-1),c_int(0)): # pick last fault
-                    raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-                print('SPEC_FLT.Classical: run successfully.\n\t'+specFlt.toString())
+        __runSimulate__(specFlt,clearPrev)
+    #
+    def substationGroup(self,xsmall=None,lsmall=None):# xsmall for 100m, 0.1*0.4=>0.04Ohm
+        """
+            Grouper Bus and Equipment by substation
+        return:
+            dict['BUS']      : list of Bus by substation
+            dict['EQUIPMENT] : list of Equipmement by substation
+        """
+##        xsmall=0.04
+##        lsmall=0.1 # xsmall for 100m, 0.1*0.4=>0.04Ohm
+        lstBus,lstEquipment = [],[]
+        #
+        if self.__allBus__ is None:
+            super().__setattr__('__allBus__',self.getData('BUS'))
+        #
+        setBusHnd,setEquiHnd = set(),set()
+        for b1 in self.__allBus__:
+            if b1.__hnd__ not in setBusHnd:
+                resB1 = [b1]
+                setEqui1 = []
+                b11 = __getSubStation__(b1,setEqui1,setEquiHnd,xsmall,lsmall)
+                resB1.extend( b11 )
                 #
-                des = OlxAPI.FaultDescription(0)
-                id1 = des.index('.')
-                __COUNT_FAULT__ = int(des[:id1])
-                __INDEX_FAULT__ = __COUNT_FAULT__
-                __TYPEF_SIMUL__ = 'Classical'
-    ##            for i in range(len(RESULT_FAULT)+1,__COUNT_FAULT__+1):
-    ##                RESULT_FAULT.append( RESULT_FLT(i) )
-                return
-            else:
-                specFlt = [specFlt]
-        # run SEA
-        if specFlt[0].__type__=='SEA':
-            specFlt[0].checkData()
-            para = specFlt[0].getData()
-            # DoSteppedEvent(hnd, fltOpt, runOpt, noTiers)
-            if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.DoSteppedEvent(para['hnd'],para['fltOpt'],para['runOpt'],para['tiers']):
-                raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-            print('SPEC_FLT.SEA: run successfully.\n\t'+specFlt[0].toString())
-            #
-            __COUNT_FAULT__ = __getSEA_Result__(0)
-            __TYPEF_SIMUL__ = 'SEA'
-            return
-        # run simultaneous
-        import xml.etree.ElementTree as ET
-        data = ET.Element('SIMULATEFAULT')
-        data.set('CLEARPREV',str(clearPrev))
-        data1 = ET.SubElement(data, 'FAULT')
-        for i in range(len(specFlt)):
-            sp1 = specFlt[i]
-            sp1.checkData()
-            para1 = sp1.getData()
-            data2 = ET.SubElement(data1, 'FLTSPEC')
-            data2.set('FLTDESC','specFlt: '+str(i+1))
-            for k,v in para1.items():
-                data2.set(k,v)
-        #
-        sInput = ET.tostring(data).decode('UTF-8')
-        #print(sInput)
-        if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.Run1LPFCommand(sInput):
-            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        print('SPEC_FLT.Simultaneous: run successfully.')
-        for sp1 in specFlt:
-            print('\t'+sp1.toString())
-        #
-        OlxAPI.PickFault(c_int(-1),c_int(0)) # pick last fault
-        des = OlxAPI.FaultDescription(0)
-        id1 = des.index('.')
-        __COUNT_FAULT__ = int(des[:id1])
-        __INDEX_FAULT__ = __COUNT_FAULT__
-        __TYPEF_SIMUL__ = 'Simultaneous'
+                lstBus.append(resB1)
+                lstEquipment.append(setEqui1)
+                #
+                for bi in resB1:
+                    setBusHnd.add(bi.__hnd__)
+        return {'BUS': lstBus,'EQUIPMENT':lstEquipment}
+    #
+    def findLineSections(self,t0,prt=False):
+        """
+        Purpose: Find all section (LINE,SERIESRC,SWITCH) from a TERMINAL/RLYGROUP
+                All taps are ignored. Close switches are included.
+                Branches out of service are ignored
+        Args:
+            t0: start TERMINAL/RLYGROUP
+                Exception if:
+                    1st Bus (of t0) is a TAP Bus
+                    t0 located on XFMR,XFMR3,SHIFTER
+        return:
+            mainLine  = [[]]     List of all TERMINAL in the main-line of method 1,2,3 in Help 8.9
+                                        METHOD 1: Enter the same name in the Name field of the line’s main segments
+                                        METHOD 2: Include these three characters [T] (or [t]) in the tap lines name
+                                        METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+            remoteBus  = []      List of remote BUSES: two for 2-terminal line and >2 for 3-terminal line
+            remoteRLG  = []      List of all RLYGROUP at the remote end
+        """
+        if type(t0) not in {TERMINAL,RLYGROUP}:
+            raise Exception('OLCase.findLineSection(t0) with t0 is a TERMINAL or RLYGROUP\n\tFound:'+toString(t0))
+        mainLineHnd,remoteBusHnd,remoteRLGHnd = OlxAPILib.findLineSections(t0.HANDLE,prt)
+        mainLine = self.toOBJ(mainLineHnd)
+        remoteBus = self.toOBJ(remoteBusHnd)
+        remoteRLG = self.toOBJ(remoteRLGHnd)
+        return mainLine,remoteBus,remoteRLG
+    #
+    def tapLineTool(self,t0,prt=False):
+        """
+        Purpose: Find main sections of Line and sum impedance(Z0,Z1) and Length
+            All taps are ignored. Close switches are included.
+            Branches out of service are ignored
+        Args:
+            t0: start TERMINAL/RLYGROUP
+                Exception if:
+                    1st Bus (of t0) is a TAP Bus
+                    t0 located on XFMR,XFMR3,SHIFTER
+            prt: (True/False)
+                option print to stdout all details when research mainLine
+        return:
+            res['mainLine']   = [[]] List of all TERMINAL in the main-line of method 1,2,3 in Help 8.9
+                                        METHOD 1: Enter the same name in the Name field of the line’s main segments
+                                        METHOD 2: Include these three characters [T] (or [t]) in the tap lines name
+                                        METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+            res['remoteBus']  = []   List of remote BUSES on the mainLine: two for 2-terminal line and >2 for 3-terminal line
+            res['remoteRLG']  = []   List of all RLYGROUP at the remote end on the mainLine
+            res['Z1']         = []   List of positive sequence Impedance of the mainLine
+            res['Z0']         = []   List of zero sequence Impedance of the mainLine
+            res['Length']     = []   List of sum length of the mainLine
+        """
+        if type(t0) not in {TERMINAL,RLYGROUP}:
+            raise Exception('\nOLCase.tapLineTool(t0) with t0 is a TERMINAL or RLYGROUP\n\tFound:'+toString(t0))
+        ra = OlxAPILib.tapLineTool(t0.HANDLE,prt)
+        res = dict()
+        res['mainLine'] = self.toOBJ(ra['mainLineHnd'])
+        res['remoteBus'] = self.toOBJ(ra['remoteBusHnd'])
+        res['remoteRLG'] = self.toOBJ(ra['remoteRLGHnd'])
+        res['Z1'] = ra['Z1']
+        res['Z0'] = ra['Z0']
+        res['Length'] = ra['Length']
+        return res
+    #
+    def toOBJ(self,handle):
+        """ Convert handle => OBJECT
+            return None if not found
+        example: (with 4,5 are handle of BUS)
+            4       => BUS
+            [4,5]   => [BUS, BUS]
+            [[4,5]] => [[BUS, BUS]]
+        """
+        if type(handle)==list:
+            return [self.toOBJ(h1) for h1 in handle]
+        try:
+            tc1 = OlxAPI.EquipmentType(handle)
+            return __getOBJ__(handle,tc=tc1)
+        except:
+            return None
 #
 OLCase = NETWORK()
+#
+class AREA:
+    def __init__(self,no):
+        super().__setattr__('__no__', no)
+        super().__setattr__('__currFileIdx__',__CURRENT_FILE_IDX__)
+    #
+    @property
+    def NO(self):
+        """ (int) AREA Number """
+        __check_currFileIdx__(self)
+        return self.__no__
+    @property
+    def NAME(self):
+        """ (str) AREA Name """
+        __check_currFileIdx__(self)
+        return ''
+    @property
+    def SLACKBUS(self):
+        """ (BUS) AREA Slack Bus """
+        __check_currFileIdx__(self)
+        return None
+    @property
+    def EXPORT(self):
+        """ (float) AREA Export MW """
+        __check_currFileIdx__(self)
+        return 0
+    @property
+    def GEN(self):
+        """ (float) AREA Generation MW """
+        __check_currFileIdx__(self)
+        return 0
+    @property
+    def LOAD(self):
+        """ (float) AREA Load MW """
+        __check_currFileIdx__(self)
+        return 0
+    #
+    def equals(self,o2):
+        """ return (bool) comparison of 2 objects """
+        if type(o2)==AREA:
+            __check_currFileIdx__(self)
+            __check_currFileIdx__(o2)
+            return self.__no__==o2.__no__
+        return False
+    #
+    def toString(self,option=0):
+        if option==0:
+            return '[AREA] %i %s'%(self.__no__,self.NAME)
+        return '%i %s'%(self.__no__,self.NAME)
+#
+class ZONE:
+    def __init__(self,no):
+        super().__setattr__('__no__', no)
+        super().__setattr__('__currFileIdx__',__CURRENT_FILE_IDX__)
+    #
+    @property
+    def NO(self):
+        """ (int) ZONE Number """
+        __check_currFileIdx__(self)
+        return self.__no__
+    @property
+    def NAME(self):
+        """ (str) ZONE Name """
+        __check_currFileIdx__(self)
+        return ''
+    #
+    def equals(self,o2):
+        """ return (bool) comparison of 2 objects """
+        if type(o2)==ZONE:
+            __check_currFileIdx__(self)
+            __check_currFileIdx__(o2)
+            return self.__no__==o2.__no__
+        return False
+    #
+    def toString(self,option=0):
+        if option==0:
+            return '[ZONE] %i %s'%(self.__no__,self.NAME)
+        return '%i %s'%(self.__no__,self.NAME)
 #
 class BUS(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
@@ -1644,16 +2129,23 @@ class BUS(__DATAABSTRACT__):
                 hnd = OlxAPI.FindBus(val2,val1)
             else:
                 hnd = 0
-        __initFailCheck__(hnd,'BUS',[val1,val2])
+            __initFailCheck__(hnd,'BUS',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('BUS')
     @property
     def ANGLEP(self):
         """ (float) Bus voltage angle (degree) from a power flow solution """
         return self.getData('ANGLEP')
     @property
     def AREANO(self):
-        """ (int) Bus area """
+        """ (int) Bus area number """
         return self.getData('AREANO')
+    @property
+    def AREA(self):
+        """ (AREA) Bus area """
+        return AREA(self.getData('AREANO'))
     @property
     def VISIBLE(self):
         """ (int) Bus hide ID flag: 1-visible; -2-hidden; 0-not yet placed """
@@ -1704,93 +2196,174 @@ class BUS(__DATAABSTRACT__):
         return self.getData('TAP')
     @property
     def ZONENO(self):
-        """ (int) Bus zone """
+        """ (int) Bus zone number """
         return self.getData('ZONENO')
     @property
+    def ZONE(self):
+        """ (ZONE) Bus ZONE """
+        return ZONE(self.getData('ZONENO'))
+    @property
     def BREAKER(self):
-        """ return [BREAKER] List of Breakers connected to BUS """
-        return __getBusEquipment__(self,'BREAKER')
+        """ [BREAKER] List Breakers connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'BREAKER'):
+            res.append(BREAKER(hnd=h1))
+        return res
     @property
     def CCGEN(self):
-        """ return [CCGEN] List of Voltage Controlled Current Sources connected to BUS """
-        return __getBusEquipment__(self,'CCGEN')
+        """ CCGEN-Voltage Controlled Current Sources connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'CCGEN')
+        try:
+            return CCGEN(hnd=g[0])
+        except:
+            return None
     @property
     def DCLINE2(self):
-        """ return [DCLINE2] List of DC Lines connected to BUS """
-        return __getBusEquipment__(self,'DCLINE2')
+        """ [DCLINE2] List DC Lines connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'DCLINE2'):
+            res.append(DCLINE2(hnd=h1))
+        return res
     @property
     def GEN(self):
-        """ return [GEN] List of Generators connected to BUS """
-        return __getBusEquipment__(self,'GEN')
+        """ GEN-Generator connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'GEN')
+        try:
+            return GEN(hnd=g[0])
+        except:
+            return None
     @property
     def GENW3(self):
-        """ return [GENW3] List of Type-3 Wind Plants connected to BUS """
-        return __getBusEquipment__(self,'GENW3')
+        """ GENW3-Type-3 Wind Plants connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'GENW3')
+        try:
+            return GENW3(hnd=g[0])
+        except:
+            return None
     @property
     def GENW4(self):
-        """ return [GENW4] List of Converter-Interfaced Resources connected to BUS """
-        return __getBusEquipment__(self,'GENW4')
+        """ GENW4-Converter-Interfaced Resources connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'GENW4')
+        try:
+            return GENW4(hnd=g[0])
+        except:
+            return None
     @property
     def LINE(self):
-        """ return [LINE] List of Transmission Lines connected to BUS """
-        return __getBusEquipment__(self,'LINE')
+        """ [LINE] List Transmission Lines connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'LINE'):
+            res.append(LINE(hnd=h1))
+        return res
     @property
     def LOAD(self):
-        """ return [LOAD] List of Loads connected to BUS """
-        return __getBusEquipment__(self,'LOAD')
+        """ LOAD-Load connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'LOAD')
+        try:
+            return LOAD(hnd=g[0])
+        except:
+            return None
     @property
     def SHIFTER(self):
-        """ return [SHIFTER] List of Phase Shifters connected to BUS """
-        return __getBusEquipment__(self,'SHIFTER')
+        """ [SHIFTER] List Phase Shifters connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'SHIFTER'):
+            res.append(SHIFTER(hnd=h1))
+        return res
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] List of Relay groups connected to BUS """
-        return __getBusEquipment__(self,'RLYGROUP')
+        """ [RLYGROUP] List Relay groups connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'RLYGROUP'):
+            res.append(RLYGROUP(hnd=h1))
+        return res
     @property
     def SERIESRC(self):
-        """ return [SERIESRC] List of Series capacitor/reactor connected to BUS """
-        return __getBusEquipment__(self,'SERIESRC')
+        """ [SERIESRC] List Series capacitor/reactor connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'SERIESRC'):
+            res.append(SERIESRC(hnd=h1))
+        return res
     @property
     def SHUNT(self):
-        """ return [SHUNT] List of Shunts connected to BUS """
-        return __getBusEquipment__(self,'SHUNT')
+        """ SHUNT-Shunt connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'SHUNT')
+        try:
+            return SHUNT(hnd=g[0])
+        except:
+            return None
     @property
     def SVD(self):
-        """ return [SVD] List of Switched Shunt connected to BUS """
-        return __getBusEquipment__(self,'SVD')
+        """ SVD-Switched Shunt connected to BUS
+            None if not found """
+        g = __getBusEquipmentHnd__(self,'SVD')
+        try:
+            return SVD(hnd=g[0])
+        except:
+            return None
     @property
     def SWITCH(self):
-        """ return [SWITCH] List of Switches connected to BUS """
-        return __getBusEquipment__(self,'SWITCH')
+        """ [SWITCH] List Switches connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'SWITCH'):
+            res.append(SWITCH(hnd=h1))
+        return res
     @property
     def XFMR(self):
-        """ return [XFMR] List of 2-Windings Transformers connected to BUS """
-        return __getBusEquipment__(self,'XFMR')
+        """ [XFMR] List 2-Windings Transformers connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'XFMR'):
+            res.append(XFMR(hnd=h1))
+        return res
     @property
     def XFMR3(self):
-        """ return [XFMR3] List of 3-Windings Transformers connected to BUS """
-        return __getBusEquipment__(self,'XFMR3')
+        """ [XFMR3] List 3-Windings Transformers connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'XFMR3'):
+            res.append(XFMR3(hnd=h1))
+        return res
     @property
     def LOADUNIT(self):
-        """ return [LOADUNIT] List of Load units connected to BUS """
-        return __getBusEquipment__(self,'LOADUNIT')
+        """ [LOADUNIT] List Load units connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'LOADUNIT'):
+            res.append(LOADUNIT(hnd=h1))
+        return res
     @property
     def SHUNTUNIT(self):
-        """ return [SHUNTUNIT] List of Shunt units connected to BUS """
-        return __getBusEquipment__(self,'SHUNTUNIT')
+        """ [SHUNTUNIT] List Shunt units connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'SHUNTUNIT'):
+            res.append(SHUNTUNIT(hnd=h1))
+        return res
     @property
     def GENUNIT(self):
-        """ return [GENUNIT] List of Generator units connected to BUS """
-        return __getBusEquipment__(self,'GENUNIT')
+        """ [GENUNIT] List Generator units connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'GENUNIT'):
+            res.append(GENUNIT(hnd=h1))
+        return res
     @property
     def TERMINAL(self):
-        """
-        return [] List of TERMINAL connected to BUS
-        """
-        return __getBusEquipment__(self,'TERMINAL')
+        """ [TERMINAL] List TERMINALs connected to BUS """
+        res = []
+        for h1 in __getBusEquipmentHnd__(self,'TERMINAL'):
+            res.append(TERMINAL(hnd=h1))
+        return res
     #
     def terminalTo(self,b2):
-        """ return list TERMINAL from this BUS to BUS b2 """
+        """ return [TERMINAL] List TERMINALs from this BUS to BUS b2 """
+        if type(b2)!=BUS:
+            se = '\nBUS.terminalTo(b2)'
+            se+= "\n\tRequired (b2)      : (BUS)"
+            se+= '\n\t' +__getErrValue__(BUS,b2)
+            raise ValueError(se)
         __check_currFileIdx__(self)
         __check_currFileIdx__(b2)
         res = []
@@ -1818,16 +2391,19 @@ class GEN(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).GEN[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'GEN',[val1,val2])
+            __initFailCheck__(hnd,'GEN',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('GEN')
     @property
     def BUS(self):
         """ (BUS) Generators connected BUS """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def CNTBUS(self):
         """ (BUS) Generators controlled BUS """
-        return self.getData('CNTBUS')
+        return BUS(hnd=self.getData('CNTBUS').__hnd__)
     @property
     def FLAG(self):
         """ (int) Generator in-service flag: 1- active; 2- out-of-service """
@@ -1874,8 +2450,11 @@ class GEN(__DATAABSTRACT__):
         return self.getData('SCHEDV')
     @property
     def GENUNIT(self):
-        """ return [GENUNIT] list of GEN. units in GEN """
-        return self.BUS.GENUNIT
+        """ [GENUNIT] List GEN. units in GEN """
+        res = []
+        for g1 in self.BUS.GENUNIT:
+            res.append(GENUNIT(hnd=g1.__hnd__))
+        return res
 #
 class GENUNIT(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -1885,8 +2464,11 @@ class GENUNIT(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'GENUNIT')
         if hnd is None:
             hnd = __findObjHnd__(val1,GENUNIT)
-        __initFailCheck__(hnd,'GENUNIT',[val1])
+            __initFailCheck__(hnd,'GENUNIT',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('GENUNIT')
     @property
     def CID(self):
         """ (str) Generator unit ID """
@@ -1906,7 +2488,7 @@ class GENUNIT(__DATAABSTRACT__):
     @property
     def GEN(self):
         """ (GEN) Generator unit generator """
-        return self.getData('GEN')
+        return GEN(hnd=self.getData('GEN').__hnd__)
     @property
     def MVARATE(self):
         """ (float) Generator unit rating MVA """
@@ -1929,7 +2511,8 @@ class GENUNIT(__DATAABSTRACT__):
         return self.getData('QMIN')
     @property
     def R(self):
-        """ [float]*5 Generator unit resistances: [subtransient, synchronous, transient, negative sequence, zero sequence] """
+        """ [float]*5 Generator unit resistances
+            [subtransient, synchronous, transient, negative sequence, zero sequence] """
         return self.getData('R')
     @property
     def RG(self):
@@ -1945,7 +2528,8 @@ class GENUNIT(__DATAABSTRACT__):
         return self.getData('SCHEDQ')
     @property
     def X(self):
-        """ [float]*5 Generator unit reactances : [subtransient, synchronous, transient, negative sequence, zero sequence] """
+        """ [float]*5 Generator unit reactances
+            [subtransient, synchronous, transient, negative sequence, zero sequence] """
         return self.getData('X')
     @property
     def XG(self):
@@ -1953,14 +2537,15 @@ class GENUNIT(__DATAABSTRACT__):
         return self.getData('XG')
     @property
     def BUS(self):
-        """ return BUS of GEN unit """
-        return self.GEN.BUS
+        """ BUS of GEN unit """
+        return BUS(hnd=self.GEN.BUS.__hnd__)
 #
 class GENW3(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
         """ GENW3 constructor (Exception if not found):
                 GENW3(GUID)        GENW3('{7e5f2278-6566-42c6-9b33-a3f27f4464f1}
-                GENW3(STR)         GENW3("[GENW3] 4 'TENNESSEE' 132 kV") """
+                GENW3(STR)         GENW3("[GENW3] 4 'TENNESSEE' 132 kV")
+                GENW3(name,kV)     GENW3('CLAYTOR',132)  """
         __checkArgs__([val1,val2,hnd],'GENW3')
         if hnd is None:
             if val2 is None:
@@ -1970,12 +2555,15 @@ class GENW3(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).GENW3[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'GENW3',[val1])
+            __initFailCheck__(hnd,'GENW3',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('GENW3')
     @property
     def BUS(self):
         """ (BUS) Generators Type 3 connected BUS """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def CBAR(self):
         """ (int) Generator Type 3 Crowbarred flag: 1-yes; 0-no """
@@ -2057,7 +2645,8 @@ class GENW4(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
         """ GENW4 constructor (Exception if not found):
                 GENW4(GUID)        GENW4('{7e5f2278-6566-42c6-9b33-a3f27f4464f1}
-                GENW4(STR)         GENW4("[GENW4] 4 'TENNESSEE' 132 kV") """
+                GENW4(STR)         GENW4("[GENW4] 4 'TENNESSEE' 132 kV")
+                GENW4(name,kV)     GENW4('CLAYTOR',132) """
         __checkArgs__([val1,val2,hnd],'GENW4')
         if hnd is None:
             if val2 is None:
@@ -2067,12 +2656,15 @@ class GENW4(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).GENW4[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'GENW4',[val1,val2])
+            __initFailCheck__(hnd,'GENW4',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('GENW4')
     @property
     def BUS(self):
         """ (BUS) Generators Type 4 connected BUS """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def CTRLMETHOD(self):
         """ (int) Generator Type 4 control method """
@@ -2148,8 +2740,11 @@ class CCGEN(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).CCGEN[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'CCGEN',[val1,val2])
+            __initFailCheck__(hnd,'CCGEN',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('CCGEN')
     @property
     def A(self):
         """ [float]*10 Voltage controlled current source angle """
@@ -2160,8 +2755,8 @@ class CCGEN(__DATAABSTRACT__):
         return self.getData('BLOCKPHASE')
     @property
     def BUS(self):
-        """ (BUS) Voltage controlled current source bus """
-        return self.getData('BUS')
+        """ (BUS) Voltage controlled current source BUS """
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def DATEOFF(self):
         """ (str) Voltage controlled current source out of service date """
@@ -2188,7 +2783,7 @@ class CCGEN(__DATAABSTRACT__):
         return self.getData('V')
     @property
     def VLOC(self):
-        """ (int) Voltage controlled current source voltage measurement location """
+        """ (int) Voltage controlled current source voltage measurement location 0-Device terminal; 1-Network side of transformer """
         return self.getData('VLOC')
     @property
     def VMAXMUL(self):
@@ -2211,8 +2806,11 @@ class XFMR(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,XFMR)
             else:
                 hnd = __findBr2Hnd__('XFMR',val1,val2,val3)
-        __initFailCheck__(hnd,'XFMR',[val1,val2,val3])
+            __initFailCheck__(hnd,'XFMR',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('XFMR')
     @property
     def AUTOX(self):
         """ (int) 2-winding transformer auto transformer flag:1-true;0-false """
@@ -2248,11 +2846,11 @@ class XFMR(__DATAABSTRACT__):
     @property
     def BUS1(self):
         """ (BUS) 2-winding transformer bus 1 """
-        return self.getData('BUS1')
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
         """ (BUS) 2-winding transformer bus 2 """
-        return self.getData('BUS2')
+        return BUS(hnd=self.getData('BUS2').__hnd__)
     @property
     def CID(self):
         """ (str) 2-winding transformer circuit ID """
@@ -2330,6 +2928,10 @@ class XFMR(__DATAABSTRACT__):
         """ (float) 2-winding transformer LTC min controlled quantity limit """
         return self.getData('MAXVW')
     @property
+    def METEREDEND(self):
+        """ (int) 2-winding transformer metered bus 1-at Bus1; 2 at Bus2; 0 XFMR in a single area """
+        return self.getData('METEREDEND')
+    @property
     def MINTAP(self):
         """ (float) 2-winding transformer LTC min tap """
         return self.getData('MINTAP')
@@ -2355,7 +2957,7 @@ class XFMR(__DATAABSTRACT__):
         return self.getData('NAME')
     @property
     def PRIORITY(self):
-        """ (int) 2-winding transformer LTC adjustment priority """
+        """ (int) 2-winding transformer LTC adjustment priority 0-Normal, 1-Medieum, 2-High """
         return self.getData('PRIORITY')
     @property
     def PRITAP(self):
@@ -2386,10 +2988,6 @@ class XFMR(__DATAABSTRACT__):
         """ (float) 2-winding transformer secondary tap """
         return self.getData('SECTAP')
     @property
-    def METEREDEND(self):
-        """ (int) 2-winding transformer metered bus 1-at Bus1; 2 at Bus2; 0 XFMR in a single area """
-        return self.getData('METEREDEND')
-    @property
     def X(self):
         """ (float) 2-winding transformer X """
         return self.getData('X')
@@ -2411,16 +3009,35 @@ class XFMR(__DATAABSTRACT__):
         return self.getData('XGN')
     @property
     def BUS(self):
-        """ return [BUS] list of Buses of XFMR"""
+        """ [BUS] List Buses of XFMR"""
         return [self.BUS1,self.BUS2]
     @property
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of XFMR
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of XFMR
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
+    @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of XFMR"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2')]
+        """ [RLYGROUP] List RLYGROUPs of XFMR """
+        return [self.RLYGROUP1,self.RLYGROUP2]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of XFMR """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of XFMR """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class XFMR3(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,val3=None,hnd=None):
@@ -2434,8 +3051,11 @@ class XFMR3(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,XFMR3)
             else:
                 hnd = __findBr2Hnd__('XFMR3',val1,val2,val3)
-        __initFailCheck__(hnd,'XFMR3',[val1,val2,val3])
+            __initFailCheck__(hnd,'XFMR3',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,val4=None,hnd=None):
+        __oldinit214__('XFMR3')
     @property
     def AUTOX(self):
         """ (int) 3-winding transformer auto transformer flag:1-true;0-false """
@@ -2455,15 +3075,19 @@ class XFMR3(__DATAABSTRACT__):
     @property
     def BUS1(self):
         """ (BUS) 3-winding transformer bus 1 """
-        return self.getData('BUS1')
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
         """ (BUS) 3-winding transformer bus 2 """
-        return self.getData('BUS2')
+        return BUS(hnd=self.getData('BUS2').__hnd__)
     @property
     def BUS3(self):
         """ (BUS) 3-winding transformer bus 3 """
-        return self.getData('BUS3')
+        return BUS(hnd=self.getData('BUS3').__hnd__)
+    @property
+    def BUS(self):
+        """ return [BUS] List Buses of XFMR3 """
+        return [self.BUS1,self.BUS2,self.BUS3]
     @property
     def CID(self):
         """ (str) 3-winding transformer circuit ID """
@@ -2562,7 +3186,7 @@ class XFMR3(__DATAABSTRACT__):
         return self.getData('NAME')
     @property
     def PRIORITY(self):
-        """ (int) 3-winding transformer LTC adjustment priority """
+        """ (int) 3-winding transformer LTC adjustment priority 0-Normal, 1-Medieum, 2-High """
         return self.getData('PRIORITY')
     @property
     def PRITAP(self):
@@ -2682,20 +3306,43 @@ class XFMR3(__DATAABSTRACT__):
         return self.getData('XST0')
     @property
     def Z0METHOD(self):
-        """ (int) 3-winding transformer Z0 method """
+        """ (int) 3-winding transformer Z0 method 1-Short circuit impedance; 2-Classical T model impedance """
         return self.getData('Z0METHOD')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of XFMR3"""
-        return [self.BUS1,self.BUS2,self.BUS3]
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of XFMR3
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of XFMR3
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP3(self):
+        """ RLYGROUP3 of XFMR3
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP3').__hnd__)
+        except:
+            return None
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of XFMR3"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2'),self.getData('RLYGROUP3')]
+        """ [RLYGROUP] List RLYGROUPs of XFMR3 """
+        return [self.RLYGROUP1,self.RLYGROUP2,self.RLYGROUP3]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of XFMR3 """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of XFMR3 """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class SHIFTER(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,val3=None,hnd=None):
@@ -2709,8 +3356,11 @@ class SHIFTER(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,SHIFTER)
             else:
                 hnd = __findBr2Hnd__('SHIFTER',val1,val2,val3)
-        __initFailCheck__(hnd,'SHIFTER',[val1,val2,val3])
+            __initFailCheck__(hnd,'SHIFTER',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('SHIFTER')
     @property
     def ANGMAX(self):
         """ (float) Phase shifter shift angle max """
@@ -2742,11 +3392,15 @@ class SHIFTER(__DATAABSTRACT__):
     @property
     def BUS1(self):
         """ (BUS) Phase shifter bus 1 """
-        return self.getData('BUS1')
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
         """ (BUS) Phase shifter bus 2 """
-        return self.getData('BUS2')
+        return BUS(hnd=self.getData('BUS2').__hnd__)
+    @property
+    def BUS(self):
+        """ return [BUS] List Buses of SHIFTER """
+        return [self.BUS1,self.BUS2]
     @property
     def BZ1(self):
         """ (float) Phase shifter Bz1 """
@@ -2856,17 +3510,32 @@ class SHIFTER(__DATAABSTRACT__):
         """ (int) Phase shifter correct table number """
         return self.getData('ZCORRECTNO')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of SHIFTER"""
-        return [self.BUS1,self.BUS2]
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of SHIFTER
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of SHIFTER
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of SHIFTER"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2')]
+        """ [RLYGROUP] List RLYGROUPs of SHIFTER """
+        return [self.RLYGROUP1,self.RLYGROUP2]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of SHIFTER """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of SHIFTER """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class LINE(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,val3=None,hnd=None):
@@ -2880,8 +3549,11 @@ class LINE(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,LINE)
             else:
                 hnd = __findBr2Hnd__('LINE',val1,val2,val3)
-        __initFailCheck__(hnd,'LINE',[val1,val2,val3])
+            __initFailCheck__(hnd,'LINE',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('LINE')
     @property
     def B1(self):
         """ (float) Line B1 , in pu """
@@ -2901,11 +3573,15 @@ class LINE(__DATAABSTRACT__):
     @property
     def BUS1(self):
         """ (BUS) Line bus 1 """
-        return self.getData('BUS1')
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
         """ (BUS) Line bus 2 """
-        return self.getData('BUS2')
+        return BUS(hnd=self.getData('BUS2').__hnd__)
+    @property
+    def BUS(self):
+        """ [BUS] List Buses of LINE """
+        return [self.BUS1,self.BUS2]
     @property
     def CID(self):
         """ (str) Line circuit ID """
@@ -2972,11 +3648,11 @@ class LINE(__DATAABSTRACT__):
         return self.getData('METEREDEND')
     @property
     def TYPE(self):
-        """ (str) Line table type """
+        """ (str) Line table type in ['','Delta Dove','Horz. Dove','Vert. Dove] """
         return self.getData('TYPE')
     @property
     def UNIT(self):
-        """ (str) Line length unit """
+        """ (str) Line length unit in [ft,kt,mi,m,km] """
         return self.getData('UNIT')
     @property
     def X(self):
@@ -2987,17 +3663,32 @@ class LINE(__DATAABSTRACT__):
         """ (float) Line Xo, in pu """
         return self.getData('X0')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of LINE"""
-        return [self.getData('BUS1'),self.getData('BUS2')]
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of LINE
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of LINE
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of LINE"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2')]
+        """ [RLYGROUP] List RLYGROUPs of LINE """
+        return [self.RLYGROUP1,self.RLYGROUP2]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of LINE """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of LINE """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class DCLINE2(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,val3=None,hnd=None):
@@ -3011,8 +3702,11 @@ class DCLINE2(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,DCLINE2)
             else:
                 hnd = __findBr2Hnd__('DCLINE2',val1,val2,val3)
-        __initFailCheck__(hnd,'DCLINE2',[val1,val2,val3])
+            __initFailCheck__(hnd,'DCLINE2',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('DCLINE2')
     @property
     def ANGMAX(self):
         """ [float]*2 DC Line Angle max """
@@ -3027,12 +3721,16 @@ class DCLINE2(__DATAABSTRACT__):
         return self.getData('BRIDGE')
     @property
     def BUS1(self):
-        """ (BUS) DC Line bus 1 """
-        return self.getData('BUS1')
+        """ (BUS) DC Line BUS 1 """
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
-        """ (BUS) DC Line bus 2 """
-        return self.getData('BUS2')
+        """ (BUS) DC Line BUS 2 """
+        return BUS(hnd=self.getData('BUS2').__hnd__)
+    @property
+    def BUS(self):
+        """ [BUS] List Buses of DCLINE2 """
+        return [self.BUS1,self.BUS2]
     @property
     def CID(self):
         """ (string) DC Line circuit ID """
@@ -3110,13 +3808,12 @@ class DCLINE2(__DATAABSTRACT__):
         """ [float]*2 DC Line XFMR X in pu """
         return self.getData('X')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of DCLINE2"""
-        return [self.BUS1,self.BUS2]
-    @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of DCLINE2 """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of DCLINE2 """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class MULINE(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3126,8 +3823,11 @@ class MULINE(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'MULINE')
         if hnd is None:
             hnd = __findObjHnd__(val1,MULINE)
-        __initFailCheck__(hnd,'MULINE',[val1])
+            __initFailCheck__(hnd,'MULINE',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('MULINE')
     @property
     def FROM1(self):
         """ [float]*5 Mutual coupling pair line 1 From percent """
@@ -3139,11 +3839,17 @@ class MULINE(__DATAABSTRACT__):
     @property
     def LINE1(self):
         """ (LINE) Mutual coupling pair line 1 """
-        return self.getData('LINE1')
+        try:
+            return LINE(hnd=self.getData('LINE1').__hnd__)
+        except:
+            return None
     @property
     def LINE2(self):
         """ (LINE) Mutual coupling pair line 2 """
-        return self.getData('LINE2')
+        try:
+            return LINE(hnd=self.getData('LINE2').__hnd__)
+        except:
+            return None
     @property
     def R(self):
         """ [float]*5 Mutual coupling pair R """
@@ -3173,16 +3879,23 @@ class SERIESRC(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,SERIESRC)
             else:
                 hnd = __findBr2Hnd__('SERIESRC',val1,val2,val3)
-        __initFailCheck__(hnd,'SERIESRC',[val1,val2,val3])
+            __initFailCheck__(hnd,'SERIESRC',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('SERIESRC')
     @property
     def BUS1(self):
-        """ (BUS) Series capacitor/reactor bus 1 """
-        return self.getData('BUS1')
+        """ (BUS) Series capacitor/reactor BUS 1 """
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
-        """ (BUS) Series capacitor/reactor bus 2 """
-        return self.getData('BUS2')
+        """ (BUS) Series capacitor/reactor BUS 2 """
+        return BUS(hnd=self.getData('BUS2').__hnd__)
+    @property
+    def BUS(self):
+        """ [BUS] List Buses of SERIESRC """
+        return [self.BUS1,self.BUS2]
     @property
     def CID(self):
         """ (str) Series capacitor/reactor circuit ID """
@@ -3220,17 +3933,32 @@ class SERIESRC(__DATAABSTRACT__):
         """ (float) Series capacitor/reactor X """
         return self.getData('X')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of SERIESRC"""
-        return [self.BUS1,self.BUS2]
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of SERIESRC
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of SERIESRC
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of SERIESRC"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2')]
+        """ [RLYGROUP] List RLYGROUPs of SERIESRC """
+        return [self.RLYGROUP1,self.RLYGROUP2]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of SERIESRC """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of SERIESRC """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class SWITCH(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,val3=None,hnd=None):
@@ -3244,16 +3972,23 @@ class SWITCH(__DATAABSTRACT__):
                 hnd = __findObjHnd__(val1,SWITCH)
             else:
                 hnd = __findBr2Hnd__('SWITCH',val1,val2,val3)
-        __initFailCheck__(hnd,'SWITCH',[val1,val2,val3])
+            __initFailCheck__(hnd,'SWITCH',[val1,val2,val3])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,val3=None,hnd=None):
+        __oldinit214__('SWITCH')
     @property
     def BUS1(self):
-        """ (BUS) Switch bus 1 """
-        return self.getData('BUS1')
+        """ (BUS) Switch BUS 1 """
+        return BUS(hnd=self.getData('BUS1').__hnd__)
     @property
     def BUS2(self):
-        """ (BUS) Switch bus 2 """
-        return self.getData('BUS2')
+        """ (BUS) Switch BUS 2 """
+        return BUS(hnd=self.getData('BUS2').__hnd__)
+    @property
+    def BUS(self):
+        """ [BUS] List Buses of SWITCH """
+        return [self.BUS1,self.BUS2]
     @property
     def CID(self):
         """ (str) Switch Id """
@@ -3287,17 +4022,32 @@ class SWITCH(__DATAABSTRACT__):
         """ (int) Switch position flag: 7- close; 0- open """
         return self.getData('STAT')
     @property
-    def BUS(self):
-        """ return [BUS] list of Buses of SWITCH"""
-        return [self.BUS1,self.BUS2]
+    def RLYGROUP1(self):
+        """ RLYGROUP1 of SWITCH
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP1').__hnd__)
+        except:
+            return None
+    @property
+    def RLYGROUP2(self):
+        """ RLYGROUP2 of SWITCH
+            None if not found """
+        try:
+            return RLYGROUP(hnd=self.getData('RLYGROUP2').__hnd__)
+        except:
+            return None
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] list of RLYGROUP of SWITCH"""
-        return [self.getData('RLYGROUP1'),self.getData('RLYGROUP2')]
+        """ [RLYGROUP] List RLYGROUPs of SWITCH """
+        return [self.RLYGROUP1,self.RLYGROUP2]
     @property
     def TERMINAL(self):
-        """ return [TERMINAL] list TERMINAL of SWITCH """
-        return __get_OBJTERMINAL__(self)
+        """ [TERMINAL] List TERMINALs of SWITCH """
+        res = []
+        for ti in __get_OBJTERMINAL__(self):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
 class LOAD(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
@@ -3314,12 +4064,15 @@ class LOAD(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).LOAD[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'LOAD',[val1,val2])
+            __initFailCheck__(hnd,'LOAD',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('LOAD')
     @property
     def BUS(self):
         """ (BUS) Load bus """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def FLAG(self):
         """ (int) Load in-service flag: 1- active; 2- out-of-service """
@@ -3338,8 +4091,11 @@ class LOAD(__DATAABSTRACT__):
         return self.getData('UNGROUNDED')
     @property
     def LOADUNIT(self):
-        """ return [LOADUNIT] list of LOAD. units in LOAD """
-        return self.BUS.LOADUNIT
+        """ [LOADUNIT] List LOAD. units in LOAD """
+        res = []
+        for ti in self.BUS.LOADUNIT:
+            res.append(LOADUNIT(hnd=ti.__hnd__))
+        return res
 #
 class LOADUNIT(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3349,11 +4105,14 @@ class LOADUNIT(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'LOADUNIT')
         if hnd is None:
             hnd = __findObjHnd__(val1,LOADUNIT)
-        __initFailCheck__(hnd,'LOADUNIT',[val1])
+            __initFailCheck__(hnd,'LOADUNIT',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('LOADUNIT')
     @property
     def CID(self):
-        """ (str) Load unit ID """
+        """ (str) Load unit circuit ID """
         return self.getData('CID')
     @property
     def DATEOFF(self):
@@ -3370,7 +4129,7 @@ class LOADUNIT(__DATAABSTRACT__):
     @property
     def LOAD(self):
         """ (LOAD) Load unit load """
-        return self.getData('LOAD')
+        return LOAD(hnd=self.getData('LOAD').__hnd__)
     @property
     def MVAR(self):
         """ [float]*3 Load unit MVARs: [const. P, const. I, const. Z] """
@@ -3389,8 +4148,8 @@ class LOADUNIT(__DATAABSTRACT__):
         return self.getData('Q')
     @property
     def BUS(self):
-        """ return BUS of Load unit """
-        return self.LOAD.BUS
+        """ (BUS) Bus of Load unit """
+        return BUS(hnd=self.LOAD.BUS.__hnd__)
 #
 class SHUNT(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
@@ -3407,20 +4166,26 @@ class SHUNT(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).SHUNT[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'SHUNT',[val1,val2])
+            __initFailCheck__(hnd,'SHUNT',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('SHUNT')
     @property
     def BUS(self):
         """ (BUS) Shunt Bus """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def FLAG(self):
         """ (int) Shunt in-service flag: 1- active; 2- out-of-service """
         return self.getData('FLAG')
     @property
     def SHUNTUNIT(self):
-        """ return [SHUNTUNIT] list of SHUNT. units in SHUNT """
-        return self.BUS.SHUNTUNIT
+        """ [SHUNTUNIT] List SHUNT. units in SHUNT """
+        res = []
+        for ti in self.BUS.SHUNTUNIT:
+            res.append(SHUNTUNIT(hnd=ti.__hnd__))
+        return res
 #
 class SHUNTUNIT(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3430,8 +4195,11 @@ class SHUNTUNIT(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'SHUNTUNIT')
         if hnd is None:
             hnd = __findObjHnd__(val1,SHUNTUNIT)
-        __initFailCheck__(hnd,'SHUNTUNIT',[val1])
+            __initFailCheck__(hnd,'SHUNTUNIT',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('SHUNTUNIT')
     @property
     def B(self):
         """ (float) Shunt unit succeptance (positive sequence) """
@@ -3466,16 +4234,16 @@ class SHUNTUNIT(__DATAABSTRACT__):
         return self.getData('G0')
     @property
     def SHUNT(self):
-        """ (SHUNT) Shunt unit shunt """
-        return self.getData('SHUNT')
+        """ (SHUNT) Shunt unit of shunt """
+        return SHUNT(hnd=self.getData('SHUNT').__hnd__)
     @property
     def TX3(self):
-        """ (int) Shunt unit 3-winding transformer flag """
+        """ (int) Shunt unit 3-winding transformer flag: 1-true;0-false"""
         return self.getData('TX3')
     @property
     def BUS(self):
-        """ return BUS of Shunt unit """
-        return self.SHUNT.BUS
+        """ (BUS) Bus of Shunt unit """
+        return BUS(hnd=self.SHUNT.BUS.__hnd__)
 #
 class SVD(__DATAABSTRACT__):
     def __init__(self,val1=None,val2=None,hnd=None):
@@ -3492,8 +4260,11 @@ class SVD(__DATAABSTRACT__):
                     hnd = BUS(val1,val2).SVD[0].__hnd__
                 except:
                     hnd = 0
-        __initFailCheck__(hnd,'SVD',[val1,val2])
+            __initFailCheck__(hnd,'SVD',[val1,val2])
         super().__init__(hnd)
+    #
+    def init(val1=None,val2=None,hnd=None):
+        __oldinit214__('SVD')
     @property
     def B(self):
         """ [float]*8 SVD increment admitance """
@@ -3505,15 +4276,15 @@ class SVD(__DATAABSTRACT__):
     @property
     def BUS(self):
         """ (BUS) SVD Bus """
-        return self.getData('BUS')
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def B_USE(self):
         """ (float) SVD admitance in use """
         return self.getData('B_USE')
     @property
-    def CNTBS(self):
+    def CNTBUS(self):
         """ (BUS) SVD controled Bus """
-        return self.getData('CNTBS')
+        return BUS(hnd=self.getData('CNTBUS').__hnd__)
     @property
     def DATEOFF(self):
         """ (str) SVD out of service date """
@@ -3528,7 +4299,7 @@ class SVD(__DATAABSTRACT__):
         return self.getData('FLAG')
     @property
     def MODE(self):
-        """ (int) SVD control mode """
+        """ (int) SVD control mode: 0-Fixed; 1-Discrete; 2-Continous """
         return self.getData('MODE')
     @property
     def STEP(self):
@@ -3551,12 +4322,15 @@ class BREAKER(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'BREAKER')
         if hnd is None:
             hnd = __findObjHnd__(val1,BREAKER)
-        __initFailCheck__(hnd,'BREAKER',[val1])
+            __initFailCheck__(hnd,'BREAKER',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('BREAKER')
     @property
     def BUS(self):
-        """ (BUS) Breaker bus """
-        return self.getData('BUS')
+        """ (BUS) Breaker Bus """
+        return BUS(hnd=self.getData('BUS').__hnd__)
     @property
     def CPT1(self):
         """ (float) Breaker contact parting time for group 1 (cycles) """
@@ -3658,12 +4432,18 @@ class RLYGROUP(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYGROUP')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYGROUP)
-        __initFailCheck__(hnd,'RLYGROUP',[val1])
+            __initFailCheck__(hnd,'RLYGROUP',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYGROUP')
     @property
     def BACKUP(self):
-        """ (RLYGROUP) Relay group back up group """
-        return self.getData('BACKUP')
+        """ [RLYGROUP] List of RLYGROUP-Downstream (this RLYGROUP backups) """
+        res = []
+        for h1 in self.getData('BACKUP'):
+            res.append(RLYGROUP(hnd=h1.__hnd__))
+        return res
     @property
     def EQUIPMENT(self):
         """ (EQUIPMENT) Relay group equipment located on """
@@ -3678,12 +4458,20 @@ class RLYGROUP(__DATAABSTRACT__):
         return self.getData('INTRPTIME')
     @property
     def LOGICRECL(self):
-        """ (SCHEME) Relay group reclose logic scheme """
-        return self.getData('LOGICRECL')
+        """ (SCHEME) Relay group reclose logic scheme
+            None if not found """
+        try:
+            return SCHEME(hnd=self.getData('LOGICRECL').__hnd__)
+        except:
+            return None
     @property
     def LOGICTRIP(self):
-        """ (SCHEME) Relay group trip logic scheme """
-        return self.getData('LOGICTRIP')
+        """ (SCHEME) Relay group trip logic scheme
+            None if not found """
+        try:
+            return SCHEME(hnd=self.getData('LOGICTRIP').__hnd__)
+        except:
+            return None
     @property
     def NOTE(self):
         """ (str) Relay group annotation """
@@ -3694,76 +4482,110 @@ class RLYGROUP(__DATAABSTRACT__):
         return self.getData('OPFLAG')
     @property
     def PRIMARY(self):
-        """ (RLYGROUP) Relay group primary group """
-        return self.getData('PRIMARY')
+        """ [RLYGROUP] List of RLYGROUP-Upstream (backups for this RLYGROUP) """
+        res = []
+        for h1 in self.getData('PRIMARY'):
+            res.append(RLYGROUP(hnd=h1.__hnd__))
+        return res
     @property
     def RECLSRTIME(self):
         """ [float]*4 Relay group reclosing intervals """
         return self.getData('RECLSRTIME')
     @property
     def RLYOCG(self):
-        """ Retrieves [RLYOCG] List of OC Ground relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYOCG')
+        """ [RLYOCG] List OC Ground relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYOCG'):
+            res.append(RLYOCG(hnd=h1))
+        return res
     @property
     def RLYOCP(self):
-        """ Retrieves [RLYOCP] List of OC Phase relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYOCP')
+        """ [RLYOCP] List OC Phase relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYOCP'):
+            res.append(RLYOCP(hnd=h1))
+        return res
     @property
     def FUSE(self):
-        """ Retrieves [FUSE] List of Fuses that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'FUSE')
+        """ [FUSE] List Fuses that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'FUSE'):
+            res.append(FUSE(hnd=h1))
+        return res
     @property
     def RLYDSG(self):
-        """ Retrieves [RLYDSG] List of DS Ground relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYDSG')
+        """ [RLYDSG] List DS Ground relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYDSG'):
+            res.append(RLYDSG(hnd=h1))
+        return res
     @property
     def RLYDSP(self):
-        """ Retrieves [RLYDSP] List of DS Phase relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYDSP')
+        """ [RLYDSP] List DS Phase relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYDSP'):
+            res.append(RLYDSP(hnd=h1))
+        return res
     @property
     def RLYD(self):
-        """ Retrieves [RLYD] List of Differential relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYD')
+        """ [RLYD] List Differential relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYD'):
+            res.append(RLYD(hnd=h1))
+        return res
     @property
     def RLYV(self):
-        """ Retrieves [RLYV] List of Voltage relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RLYV')
+        """ [RLYV] List Voltage relays that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RLYV'):
+            res.append(RLYV(hnd=h1))
+        return res
     @property
     def RECLSR(self):
-        """ Retrieves [RECLSR] List of Reclosers that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'RECLSR')
+        """ [RECLSR] List Reclosers that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'RECLSR'):
+            res.append(RECLSR(hnd=h1))
+        return res
     @property
     def RELAY(self):
-        """ Retrieves [RELAY] list of all Relays that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,OLXOBJ_RELAY)
+        """ [RELAY] List All Relays that is attached to RLYGROUP """
+        return __getRLYGROUP_RLY__(self)
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYGROUP
+        """ [BUS] List Buses of this RLYGROUP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote """
-        return __getRLYGROUP_OBJ__(self,'BUS')
+                BUS[1],(BUS[2]): Bus Remote(s) """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'BUS'):
+            res.append(BUS(hnd=h1))
+        return res
     @property
     def SCHEME(self):
-        """  [SCHEME] list of SCHEME that is attached to RLYGROUP """
-        return __getRLYGROUP_OBJ__(self,'SCHEME')
+        """ [SCHEME] List SCHEMEs that is attached to RLYGROUP """
+        res = []
+        for h1 in __getRLYGROUP_OBJ__(self,'SCHEME'):
+            res.append(SCHEME(hnd=h1))
+        return res
     @property
     def RLYOC(self):
-        """  [RLYOCG+RLYOCP] list of Over Current Relay that is attached to RLYGROUP """
+        """ [RLYOCG+RLYOCP] List OC Relays that is attached to RLYGROUP """
         res = self.RLYOCG
         res.extend(self.RLYOCP)
         return res
     @property
     def RLYDS(self):
-        """  [RLYDSG+RLYDSP] list of Distance Relay that is attached to RLYGROUP """
+        """ [RLYDSG+RLYDSP] List DS Relays that is attached to RLYGROUP """
         res = self.RLYDSG
         res.extend(self.RLYDSP)
         return res
     @property
     def TERMINAL(self):
-        val1 = c_int(0)
-        if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(self.__hnd__,c_int(OlxAPIConst.RG_nBranchHnd),byref(val1)):
-            return TERMINAL(hnd=val1.value)
-        return None
+        """ (TERMINAL) TERMINAL of RLYGROUP """
+        try:
+            return TERMINAL(hnd=self.getData('TERMINAL').__hnd__)
+        except:
+            return None
 #
 class RLYOCG(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3773,8 +4595,11 @@ class RLYOCG(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYOCG')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYOCG)
-        __initFailCheck__(hnd,'RLYOCG',[val1])
+            __initFailCheck__(hnd,'RLYOCG',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYOCG')
     @property
     def ASSETID(self):
         """ (str) OC ground relay asset ID """
@@ -3798,29 +4623,29 @@ class RLYOCG(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) OC ground relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYOCG
+        """ [BUS] List Buses of this RLYOCG
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote """
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYOCG located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYOCG located on """
         return self.RLYGROUP.EQUIPMENT
     #
     def getSetting(self,sPara=None):
-        """ Retrieves Setting (sPara) of this RLYOCG """
+        """ (dict/) Setting (sPara) of this RLYOCG """
         return __getRelaySetting__(self,sPara)
     #
     def changeSetting(self,sPara,val):
-        """ change Setting with (sPara,val) of this RLYOCG """
+        """ (None) change Setting with (sPara,val) of this RLYOCG """
         return __changeRLYSetting__(self,sPara,val)
     #
     def printSetting(self):
-        """ print all Setting of this RLYOCG """
-        return __printRLYSetting__(self)
+        """ (None) Print to stdout all Setting of this RLYOCG """
+        return print(__printRLYSetting__(self))
 #
 class RLYOCP(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3830,8 +4655,11 @@ class RLYOCP(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYOCP')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYOCP)
-        __initFailCheck__(hnd,'RLYOCP',[val1])
+            __initFailCheck__(hnd,'RLYOCP',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYOCP')
     @property
     def ASSETID(self):
         """ (str) OC phase relay asset ID """
@@ -3855,29 +4683,29 @@ class RLYOCP(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) OC phase relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYOCP
+        """ [BUS] List Buses of this RLYOCP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote """
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYOCP located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYOCP located on """
         return self.RLYGROUP.EQUIPMENT
     #
     def getSetting(self,sPara=None):
-        """ Retrieves Setting (sPara) of this RLYOCP """
+        """ (dict/) Setting (sPara) of this RLYOCP """
         return __getRelaySetting__(self,sPara)
     #
     def changeSetting(self,sPara,val):
-        """ change Setting with (sPara,val) of this RLYOCP """
+        """ (None) change Setting with (sPara,val) of this RLYOCP """
         return __changeRLYSetting__(self,sPara,val)
     #
     def printSetting(self):
-        """ print all Setting of this RLYOCP """
-        return __printRLYSetting__(self)
+        """ (None) Print to stdout all Setting of this RLYOCP """
+        return print(__printRLYSetting__(self))
 #
 class FUSE(__DATAABSTRACT__):
     def __init__(self,val1=None,hnd=None):
@@ -3887,8 +4715,11 @@ class FUSE(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'FUSE')
         if hnd is None:
             hnd = __findObjHnd__(val1,FUSE)
-        __initFailCheck__(hnd,'FUSE',[val1])
+            __initFailCheck__(hnd,'FUSE',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('FUSE')
     @property
     def ASSETID(self):
         """ (str) Fuse asset ID """
@@ -3932,7 +4763,7 @@ class FUSE(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) Fuse relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def TIMEMULT(self):
         """ (float) Fuse time multiplier """
@@ -3943,13 +4774,13 @@ class FUSE(__DATAABSTRACT__):
         return self.getData('TYPE')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this FUSE
-                BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote """
+        """ [BUS] List Buses of this FUSE
+                BUS[0]          : Bus Local
+                BUS[1],(BUS[2]) : Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this FUSE located on """
+        """ (EQUIPMENT) EQUIPMENT that this FUSE located on """
         return self.RLYGROUP.EQUIPMENT
 #
 class RLYDSG(__DATAABSTRACT__):
@@ -3960,8 +4791,11 @@ class RLYDSG(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYDSG')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYDSG)
-        __initFailCheck__(hnd,'RLYDSG',[val1])
+            __initFailCheck__(hnd,'RLYDSG',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYDSG')
     @property
     def ASSETID(self):
         """ (str) DS ground relay asset ID """
@@ -3985,36 +4819,36 @@ class RLYDSG(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) DS ground relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def TYPE(self):
         """ (str) DS ground relay type (ID2) """
         return self.getData('TYPE')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYDSG
+        """ [BUS] List Buses of this RLYDSG
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote"""
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYDSG located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYDSG located on """
         return self.RLYGROUP.EQUIPMENT
     #
     def getDSSettingName(self):
-        """ [str] Retrieves All Setting name specific of this RLYDSG """
+        """ [str] All specific setting name of this RLYDSG """
         return __getRelaySettingName__(self)
     #
     def getSetting(self,sPara=None):
-        """ Retrieves Setting (sPara) of this RLYDSG """
+        """ (dict/) Setting (sPara) of this RLYDSG """
         return __getRelaySetting__(self,sPara)
     #
     def changeSetting(self,sPara,val):
-        """ change Setting with (sPara,val) of this RLYDSG """
+        """ (None) change Setting with (sPara,val) of this RLYDSG """
         return __changeRLYSetting__(self,sPara,val)
     #
     def printSetting(self):
-        """ print all Setting of this RLYDSG """
+        """ (None) Print to stdout all Setting of this RLYDSG """
         return __printRLYSetting__(self)
 #
 class RLYDSP(__DATAABSTRACT__):
@@ -4025,8 +4859,11 @@ class RLYDSP(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYDSP')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYDSP)
-        __initFailCheck__(hnd,'RLYDSP',[val1])
+            __initFailCheck__(hnd,'RLYDSP',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYDSP')
     @property
     def ASSETID(self):
         """ (str) DS phase relay asset ID """
@@ -4050,36 +4887,36 @@ class RLYDSP(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) DS phase relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def TYPE(self):
         """ (str) DS phase relay type (ID2) """
         return self.getData('TYPE')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYDSP
+        """ [BUS] List Buses of this RLYDSP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote """
+                BUS[1],(BUS[2] : Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYDSP located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYDSP located on """
         return self.RLYGROUP.EQUIPMENT
     #
     def getDSSettingName(self):
-        """ [str] Retrieves All Setting name specific of this RLYDSP """
+        """ [str] All specific setting name  of this RLYDSP """
         return __getRelaySettingName__(self)
     #
     def getSetting(self,sPara=None):
-        """ Retrieves Setting (sPara) of this RLYDSP """
+        """ (dict/) Setting (sPara) of this RLYDSP """
         return __getRelaySetting__(self,sPara)
     #
     def changeSetting(self,sPara,val):
-        """ change Setting with (sPara,val) of this RLYDSP """
+        """ (None) Change Setting with (sPara,val) of this RLYDSP """
         return __changeRLYSetting__(self,sPara,val)
     #
     def printSetting(self):
-        """ print all Setting of this RLYDSP """
+        """ (None) Print to stdout all Setting of this RLYDSP """
         return __printRLYSetting__(self)
 #
 class RLYD(__DATAABSTRACT__):
@@ -4090,8 +4927,11 @@ class RLYD(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYD')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYD)
-        __initFailCheck__(hnd,'RLYD',[val1])
+            __initFailCheck__(hnd,'RLYD',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYD')
     @property
     def ASSETID(self):
         """ (str) Differential relay asset ID """
@@ -4139,7 +4979,7 @@ class RLYD(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) Differential relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def RMTE1(self):
         """ (EQUIPMENT) Differential relay remote device 1 """
@@ -4178,13 +5018,13 @@ class RLYD(__DATAABSTRACT__):
         return self.getData('TLCTDPH')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYD
+        """ [BUS] List Buses of this RLYD
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote"""
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYD located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYD located on """
         return self.RLYGROUP.EQUIPMENT
 #
 class RLYV(__DATAABSTRACT__):
@@ -4195,8 +5035,11 @@ class RLYV(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RLYV')
         if hnd is None:
             hnd = __findObjHnd__(val1,RLYV)
-        __initFailCheck__(hnd,'RLYV',[val1])
+            __initFailCheck__(hnd,'RLYV',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RLYV')
     @property
     def ASSETID(self):
         """ (str) Voltage relay asset ID """
@@ -4248,7 +5091,7 @@ class RLYV(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) Voltage relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def SGLONLY(self):
         """ (int) Voltage relay signal only 0-No check; 1-Check over-voltage instant;2-Check over-voltage delay;4-Check under-voltage instant; 8-Check under-voltage delay  """
@@ -4271,13 +5114,13 @@ class RLYV(__DATAABSTRACT__):
         return self.getData('UVPICKUP')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RLYV
+        """ [BUS] List Buses of this RLYV
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote"""
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RLYV located on """
+        """ (EQUIPMENT) EQUIPMENT that this RLYV located on """
         return self.RLYGROUP.EQUIPMENT
 #
 class RECLSR(__DATAABSTRACT__):
@@ -4288,8 +5131,11 @@ class RECLSR(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'RECLSR')
         if hnd is None:
             hnd = __findObjHnd__(val1,RECLSR)
-        __initFailCheck__(hnd,'RECLSR',[val1])
+            __initFailCheck__(hnd,'RECLSR',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('RECLSR')
     @property
     def ASSETID(self):
         """ (str) Recloser AssetID """
@@ -4401,7 +5247,7 @@ class RECLSR(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) Recloser relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def PH_SLOWTYPE(self):
         """ (str) Recloser-Phase slow curve """
@@ -4448,13 +5294,13 @@ class RECLSR(__DATAABSTRACT__):
         return self.getData('TOTALOPS')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this RECLSR
+        """ [BUS] List Buses of this RECLSR
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote"""
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this RECLSR located on """
+        """ (EQUIPMENT) EQUIPMENT that this RECLSR located on """
         return self.RLYGROUP.EQUIPMENT
 #
 class SCHEME(__DATAABSTRACT__):
@@ -4465,8 +5311,11 @@ class SCHEME(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'SCHEME')
         if hnd is None:
             hnd = __findObjHnd__(val1,SCHEME)
-        __initFailCheck__(hnd,'SCHEME',[val1])
+            __initFailCheck__(hnd,'SCHEME',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('SCHEME')
     @property
     def ASSETID(self):
         """ (str) Logic scheme asset ID """
@@ -4502,20 +5351,20 @@ class SCHEME(__DATAABSTRACT__):
     @property
     def RLYGROUP(self):
         """ (RLYGROUP) Logic scheme relay group """
-        return self.getData('RLYGROUP')
+        return RLYGROUP(hnd=self.getData('RLYGROUP').__hnd__)
     @property
     def SGLONLY(self):
         """ (int) Logic scheme signal only """
         return self.getData('SIGNALONLY')
     @property
     def BUS(self):
-        """ Retrieves [BUS] list Bus of this SCHEME
+        """ [BUS] List Buses of this SCHEME
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote"""
+                BUS[1],(BUS[2]): Bus Remote(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
-        """ Retrieves EQUIPMENT that this SCHEME located on """
+        """ (EQUIPMENT) EQUIPMENT that this SCHEME located on """
         return self.RLYGROUP.EQUIPMENT
 #
 class ZCORRECT(__DATAABSTRACT__):
@@ -4526,8 +5375,11 @@ class ZCORRECT(__DATAABSTRACT__):
         __checkArgs__([val1,hnd],'ZCORRECT')
         if hnd is None:
             hnd = __findObjHnd__(val1,ZCORRECT)
-        __initFailCheck__(hnd,'ZCORRECT',[val1])
+            __initFailCheck__(hnd,'ZCORRECT',[val1])
         super().__init__(hnd)
+    #
+    def init(val1=None,hnd=None):
+        __oldinit214__('ZCORRECT')
 
 #$ASPEN$ CODE GENERATED AUTOMATIC by OlxObj\genCodeOlxObj.py :STOP
 
@@ -4541,7 +5393,7 @@ class TERMINAL(__DATAABSTRACT__):
         if hnd is None:
             sType = TERMINAL.__checkInputs__(b1,b2,sType,CID,'\nConstructor: TERMINAL(b1,b2,sType,CID)')
             hnd = __findTerminalHnd__(b1,b2,sType,CID)
-        __initFailCheck__(hnd,'TERMINAL',[b1,b2,sType,CID])
+            __initFailCheck__(hnd,'TERMINAL',[b1,b2,sType,CID])
         super().__init__(hnd)
     #
     def __checkInputs__(b1,b2,sType,CID,s0):
@@ -4565,34 +5417,53 @@ class TERMINAL(__DATAABSTRACT__):
             se +='\n\t'+__getErrValue__(str,CID)
             raise ValueError(se)
         try:
-            if sType in OLXOBJ_EQUIPMENT:
+            if sType in __OLXOBJ_EQUIPMENT__:
                 return sType
-            if sType in OLXOBJ_EQUIPMENTO:
+            if sType in __OLXOBJ_EQUIPMENTO__:
                 return sType.__name__
         except:
             pass
         se +=s0+'\n  sType: (str/obj) type equipment of terminal'
-        se +="\n\tRequired : (str/obj) in "+str(OLXOBJ_EQUIPMENTL)
+        se +="\n\tRequired : (str/obj) in "+str(__OLXOBJ_EQUIPMENTL__)
         se +='\n\t'+__getErrValue__(str,sType)
         raise ValueError(se)
     @property
     def EQUIPMENT(self):
-        """ return EQUIPMENT that attached this TERMINAL """
+        """ (EQUIPMENT) EQUIPMENT that attached this TERMINAL """
         return __getTERMINAL_OBJ__(self,'EQUIPMENT')
     @property
     def BUS(self):
-        """ return [BUS] that attached this TERMINAL """
-        return __getTERMINAL_OBJ__(self,'BUS')
+        """ [BUS] List Buses that attached this TERMINAL """
+        res = []
+        for bi in __getTERMINAL_OBJ__(self,'BUS'):
+            res.append(BUS(hnd=bi.__hnd__))
+        return res
+    @property
+    def BUS1(self):
+        """ (BUS) BUS1 that attached this TERMINAL """
+        h1 = __getDatai__(self.__hnd__,OlxAPIConst.BR_nBus1Hnd)
+        return BUS(hnd=h1)
+    @property
+    def BUS23(self):
+        """ [BUS] BUS2,3 that attached this TERMINAL """
+        h2 = __getDatai__(self.__hnd__,OlxAPIConst.BR_nBus2Hnd)
+        h3 = __getDatai__(self.__hnd__,OlxAPIConst.BR_nBus3Hnd)
+        if h3 is None:
+            return [BUS(hnd=h2)]
+        return [BUS(hnd=h2),BUS(hnd=h3)]
     @property
     def RLYGROUP(self):
-        """ return [RLYGROUP] that attached to this TERMINAL
-        RLYGROUP[0] : local RLYGROUP, =None if not found
-        RLYGROUP[i] : remote RLYGROUP
-                All taps are ignored.
-                Close switches are included
-                Out of service branches are ignored
-        """
-        return __getTERMINAL_OBJ__(self,'RLYGROUP')
+        """ [RLYGROUP]*3 List RLYGROUPs that attached to this TERMINAL
+                RLYGROUP[0] : local RLYGROUP, =None if not found
+                RLYGROUP[1] : opposite RLYGROUP =None if not found
+                RLYGROUP[2] : opposite RLYGROUP =None if not found or not on XFMR3"""
+        res = []
+        for ri in __getTERMINAL_OBJ__(self,'RLYGROUP'):
+            if ri is not None:
+                res.append(RLYGROUP(hnd=ri.__hnd__) )
+            else:
+                res.append(None)
+        return res
     @property
     def FLAG(self):
         """ (int) TERMINAL in-service flag: 1- active; 2- out-of-service """
@@ -4603,17 +5474,23 @@ class TERMINAL(__DATAABSTRACT__):
         return self.EQUIPMENT.CID
     @property
     def OPPOSITE(self):
-        """ return TERMINAL that opposite to this TERMINAL on the EQUIPMENT """
-        return __getTERMINAL_OBJ__(self,'OPPOSITE')
+        """ [TERMINAL] List TERMINALs that opposite to this TERMINAL on the EQUIPMENT """
+        res = []
+        for ti in __getTERMINAL_OBJ__(self,'OPPOSITE'):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
     @property
     def REMOTE(self):
-        """ return TERMINAL that REMOTE to this TERMINAL
+        """ [TERMINAL] List TERMINALs remote to this TERMINAL
                 All taps are ignored.
                 Close switches are included
                 Out of service branches are ignored """
-        return __getTERMINAL_OBJ__(self,'REMOTE')
+        res = []
+        for ti in __getTERMINAL_OBJ__(self,'REMOTE'):
+            res.append(TERMINAL(hnd=ti.__hnd__))
+        return res
 #
-OLXOBJ_CONST = {\
+__OLXOBJ_CONST__ = {\
                 'BUS'       :[OlxAPIConst.TC_BUS      ,'BUS_','[BUS] List of Buses'],
                 'GEN'       :[OlxAPIConst.TC_GEN      ,'GE_' ,'[GEN] List of Generators'],
                 'GENUNIT'   :[OlxAPIConst.TC_GENUNIT  ,'GU_' ,'[GENUNIT] List of Generator units'],
@@ -4637,26 +5514,27 @@ OLXOBJ_CONST = {\
                 'RLYGROUP'  :[OlxAPIConst.TC_RLYGROUP ,'RG_' ,'[RLYGROUP] List of Relay groups'],
                 'RLYOCG'    :[OlxAPIConst.TC_RLYOCG   ,'OG_' ,'[RLYOCG] List of OC Ground relays'],
                 'RLYOCP'    :[OlxAPIConst.TC_RLYOCP   ,'OP_' ,'[RLYOCP] List of OC Phase relays'],
+                'RLYOC'     :[0                       ,'OP_' ,'[RLYOCG/RLYOCP] List of OC relays'],
                 'FUSE'      :[OlxAPIConst.TC_FUSE     ,'FS_' ,'[FUSE] List of Fuses'],
                 'RLYDSG'    :[OlxAPIConst.TC_RLYDSG   ,'DG_' ,'[RLYDSG] List of DS Ground relays'],
                 'RLYDSP'    :[OlxAPIConst.TC_RLYDSP   ,'DP_' ,'[RLYDSP] List of DS Phase relays'],
+                'RLYDS'     :[0                       ,'DP_' ,'[RLYDSG/RLYDSP] List of DS relays'],
                 'RLYD'      :[OlxAPIConst.TC_RLYD     ,'RD_' ,'[RLYD] List of Differential relays'],
                 'RLYV'      :[OlxAPIConst.TC_RLYV     ,'RV_' ,'[RLYV] List of Voltage relays'],
                 'RECLSR'    :[OlxAPIConst.TC_RECLSRP  ,'CP_' ,'[RECLSR] List of Reclosers'],
-                #'RECLSRG'   :[OlxAPIConst.TC_RECLSRG  ,'CG_' ,'[RECLSRG] List of Ground reclosers'],
                 'SCHEME'    :[OlxAPIConst.TC_SCHEME   ,'LS_' ,'[SCHEME] List of Logic schemes '],
                 'ZCORRECT'  :[OlxAPIConst.TC_ZCORRECT ,'ZC_' ,'[ZCORRECT] List of Impedance correction table'],
-                'TERMINAL'  :[OlxAPIConst.TC_BRANCH ,'BR_' ,'[TERMINAL] List of TERMINAL']}
+                'TERMINAL'  :[OlxAPIConst.TC_BRANCH   ,'BR_' ,'[TERMINAL] List of TERMINAL']}
 #
-OLXOBJ_CONST1 = {\
-                OlxAPIConst.TC_BUS    :['BUS',BUS],
-                OlxAPIConst.TC_GEN    :['GEN',GEN],
-                OlxAPIConst.TC_GENUNIT:['GENUNIT',GENUNIT],
-                OlxAPIConst.TC_GENW3  :['GENW3',GENW3],
-                OlxAPIConst.TC_GENW4  :['GENW4',GENW4],
-                OlxAPIConst.TC_CCGEN  :['CCGEN',CCGEN],
-                OlxAPIConst.TC_XFMR   :['XFMR',XFMR],
-                OlxAPIConst.TC_XFMR3  :['XFMR3',XFMR3],
+__OLXOBJ_CONST1__ = {\
+                OlxAPIConst.TC_BUS    :['BUS',BUS],\
+                OlxAPIConst.TC_GEN    :['GEN',GEN],\
+                OlxAPIConst.TC_GENUNIT:['GENUNIT',GENUNIT],\
+                OlxAPIConst.TC_GENW3  :['GENW3',GENW3],\
+                OlxAPIConst.TC_GENW4  :['GENW4',GENW4],\
+                OlxAPIConst.TC_CCGEN  :['CCGEN',CCGEN],\
+                OlxAPIConst.TC_XFMR   :['XFMR',XFMR],\
+                OlxAPIConst.TC_XFMR3  :['XFMR3',XFMR3],\
                 OlxAPIConst.TC_PS     :['SHIFTER',SHIFTER],
                 OlxAPIConst.TC_LINE   :['LINE',LINE],
                 OlxAPIConst.TC_DCLINE2:['DCLINE2',DCLINE2],
@@ -4681,81 +5559,116 @@ OLXOBJ_CONST1 = {\
                 OlxAPIConst.TC_SCHEME :['SCHEME',SCHEME],
                 OlxAPIConst.TC_ZCORRECT:['ZCORRECT',ZCORRECT]}
 #
-OLXOBJ_EQUIPMENT  = {'XFMR3','XFMR','SHIFTER','LINE','DCLINE2','SERIESRC','SWITCH'}
-OLXOBJ_EQUIPMENTL = ['LINE','XFMR3','XFMR','SHIFTER','DCLINE2','SERIESRC','SWITCH']
-OLXOBJ_EQUIPMENTO = {XFMR3,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH}
-OLXOBJ_RELAY  = {'RLYOCG', 'RLYOCP','FUSE', 'RLYDSG', 'RLYDSP', 'RLYD', 'RLYV', 'RECLSR'}
-OLXOBJ_RELAYO = {RLYOCG,RLYOCP,FUSE,RLYDSG,RLYDSP,RLYD,RLYV,RECLSR}
-OLXOBJ_BUS    = {'BREAKER','CCGEN', 'DCLINE2','GEN','GENW3','GENW4','LINE','LOAD','SHIFTER','RLYGROUP',\
+__OLXOBJ_EQUIPMENT__  = {'XFMR3','XFMR','SHIFTER','LINE','DCLINE2','SERIESRC','SWITCH'}
+__OLXOBJ_EQUIPMENTL__ = ['LINE','XFMR3','XFMR','SHIFTER','DCLINE2','SERIESRC','SWITCH']
+__OLXOBJ_EQUIPMENTO__ = {XFMR3,XFMR,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH}
+__OLXOBJ_RELAY__  = {'RLYOCG','RLYOCP','FUSE','RLYDSG','RLYDSP','RLYD','RLYV','RECLSR'}
+__OLXOBJ_RELAYO__ = {RLYOCG,RLYOCP,FUSE,RLYDSG,RLYDSP,RLYD,RLYV,RECLSR}
+__OLXOBJ_BUS__    = {'BREAKER','CCGEN', 'DCLINE2','GEN','GENW3','GENW4','LINE','LOAD','SHIFTER','RLYGROUP',\
                  'SERIESRC','SHUNT','SVD','SWITCH','XFMR','XFMR3','LOADUNIT','SHUNTUNIT','GENUNIT','TERMINAL'}
-OLXOBJ_BUS1   = {'LOAD','SHUNT','SVD','GEN','GENW3','GENW4','CCGEN'}
-OLXOBJ_LIST   = ['BUS', 'GEN', 'GENUNIT', 'GENW3', 'GENW4', 'CCGEN', 'XFMR', 'XFMR3', 'SHIFTER', 'LINE', 'DCLINE2', 'MULINE', \
+__OLXOBJ_BUS1__  = {'LOAD','SHUNT','SVD','GEN','GENW3','GENW4','CCGEN'}
+__OLXOBJ_LIST__  = ['BUS', 'GEN', 'GENUNIT', 'GENW3', 'GENW4', 'CCGEN', 'XFMR', 'XFMR3', 'SHIFTER', 'LINE', 'DCLINE2', 'MULINE', \
                  'SERIESRC', 'SWITCH', 'LOAD', 'LOADUNIT', 'SHUNT', 'SHUNTUNIT', 'SVD', 'BREAKER', 'RLYGROUP', 'RLYOCG', 'RLYOCP',\
                  'FUSE', 'RLYDSG', 'RLYDSP', 'RLYD', 'RLYV', 'RECLSR', 'SCHEME','ZCORRECT']
+__OLXOBJ_IFLT__ = [XFMR,XFMR3,SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH,GEN,GENUNIT,GENW3,GENW4,CCGEN,\
+                   LOAD,LOADUNIT,SHUNT,SHUNTUNIT,TERMINAL]
 #
-OLXOBJ_RLYSET = {}
-OLXOBJ_PARA = {}
-OLXOBJ_PARA['SYS2'] = {
-                'BASEMVA'   :[OlxAPIConst.SY_dBaseMVA    ,'(float) System MVA base'],
-                'COMMENT'   :[OlxAPIConst.SY_sFComment   ,'(str) Network comment'],
+__OLXOBJ_RLYSET__ = {}
+__OLXOBJ_PARA__ = {}
+__OLXOBJ_PARA__['SYS2'] = {\
+                'BASEMVA'   :[OlxAPIConst.SY_dBaseMVA    ,'(float) NETWORK System MVA base'],\
+                'COMMENT'   :[OlxAPIConst.SY_sFComment   ,'(str) NETWORK comment'],\
                 'OBJCOUNT'  :[0                          ,'(dict) number of object in all network']}
-OLXOBJ_PARA['SYS'] = {\
-                'DCLINE'    :[OlxAPIConst.SY_nNODCLine2  ,'(int) Network number of DC transmission lines'],
-                'IED'       :[OlxAPIConst.SY_nNOIED      ,'(int) Network number of IED'],
-                'AREA'      :[OlxAPIConst.SY_nNOarea     ,'(int) Network number of Area'],
-                'BREAKER'   :[OlxAPIConst.SY_nNObreaker  ,'(int) Network number of Breakers'],
-                'BUS'       :[OlxAPIConst.SY_nNObus      ,'(int) Network number of Buses'],
-                'CCGEN'     :[OlxAPIConst.SY_nNOccgen    ,'(int) Network number of Voltage controlled current sources'],
-                'FUSE'      :[OlxAPIConst.SY_nNOfuse     ,'(int) Network number of Fuses'],
-                'GEN'       :[OlxAPIConst.SY_nNOgen      ,'(int) Network number of Generators'],
-                'GENUNIT'   :[OlxAPIConst.SY_nNOgenUnit  ,'(int) Network number of Generator units'],
-                'GENW3'     :[OlxAPIConst.SY_nNOgenW3    ,'(int) Network number of Type-3 Wind Plant'],
-                'GENW4'     :[OlxAPIConst.SY_nNOgenW4    ,'(int) Network number of Converter-Interfaced Resource'],
-                'LINE'      :[OlxAPIConst.SY_nNOline     ,'(int) Network number of Transmission lines'],
-                'LOAD'      :[OlxAPIConst.SY_nNOload     ,'(int) Network number of Loads'],
-                'LOADUNIT'  :[OlxAPIConst.SY_nNOloadUnit ,'(int) Network number of Load units'],
-                'LTC'       :[OlxAPIConst.SY_nNOltc      ,'(int) Network number of Load Tap Changer of 2-winding transformers'],
-                'LTC3'      :[OlxAPIConst.SY_nNOltc3     ,'(int) Network number of Load Tap Changer of 3-winding transformers'],
-                'MULINE'    :[OlxAPIConst.SY_nNOmuPair   ,'(int) Network number of Mutual pair'],
-                'SHIFTER'   :[OlxAPIConst.SY_nNOps       ,'(int) Network number of Phase shifter'],
-                #'RECLSRG'   :[OlxAPIConst.SY_nNOrecloserG,'(int) Network number of Ground reclosers'],
-                'RECLSR'   :[OlxAPIConst.SY_nNOrecloserP,'(int) Network number of Reclosers'],
-                'RLYD'      :[OlxAPIConst.SY_nNOrlyD     ,'(int) Network number of Differential relays'],
-                'RLYDSG'    :[OlxAPIConst.SY_nNOrlyDSG   ,'(int) Network number of DS ground relays'],
-                'RLYDSP'    :[OlxAPIConst.SY_nNOrlyDSP   ,'(int) Network number of DS phase relays'],
-                'RLYGROUP'  :[OlxAPIConst.SY_nNOrlyGroup ,'(int) Network number of Relay Group'],
-                'RLYOCG'    :[OlxAPIConst.SY_nNOrlyOCG   ,'(int) Network number of OC ground relays'],
-                'RLYOCP'    :[OlxAPIConst.SY_nNOrlyOCP   ,'(int) Network number of OC phase relays'],
-                'RLYV'      :[OlxAPIConst.SY_nNOrlyV     ,'(int) Network number of Voltage relays'],
-                'SCHEME'    :[OlxAPIConst.SY_nNOscheme   ,'(int) Network number of Logic schemes'],
-                'SERIESRC'  :[OlxAPIConst.SY_nNOseriescap,'(int) Network number of Series reactors/capacitors'],
-                'SHUNT'     :[OlxAPIConst.SY_nNOshunt    ,'(int) Network number of Shunts'],
-                'SHUNTUNIT' :[OlxAPIConst.SY_nNOshuntUnit,'(int) Network number of Shunt units'],
-                'SVD'       :[OlxAPIConst.SY_nNOsvd      ,'(int) Network number of Switched shunts'],
-                'SWITCH'    :[OlxAPIConst.SY_nNOswitch   ,'(int) Network number of Switches'],
-                'XFMR'      :[OlxAPIConst.SY_nNOxfmr     ,'(int) Network number of 2-winding transformers'],
-                'XFMR3'     :[OlxAPIConst.SY_nNOxfmr3    ,'(int) Network number of 3-winding transformers'],
-                'ZCORRECT'  :[OlxAPIConst.SY_nNOzCorrect ,'(int) Network number of Impedance correction table'],
-                'ZONE'      :[OlxAPIConst.SY_nNOzone     ,'(int) Network number of Zone']}
-OLXOBJ_PARA['BUS'] = {
+__OLXOBJ_PARA__['SYS'] = {\
+                'DCLINE'    :[OlxAPIConst.SY_nNODCLine2  ,'(int) NETWORK number of DC transmission lines'],
+                'IED'       :[OlxAPIConst.SY_nNOIED      ,'(int) NETWORK number of IED'],
+                'AREA'      :[OlxAPIConst.SY_nNOarea     ,'(int) NETWORK number of Area'],
+                'BREAKER'   :[OlxAPIConst.SY_nNObreaker  ,'(int) NETWORK number of Breakers'],
+                'BUS'       :[OlxAPIConst.SY_nNObus      ,'(int) NETWORK number of Buses'],
+                'CCGEN'     :[OlxAPIConst.SY_nNOccgen    ,'(int) NETWORK number of Voltage controlled current sources'],
+                'FUSE'      :[OlxAPIConst.SY_nNOfuse     ,'(int) NETWORK number of Fuses'],
+                'GEN'       :[OlxAPIConst.SY_nNOgen      ,'(int) NETWORK number of Generators'],
+                'GENUNIT'   :[OlxAPIConst.SY_nNOgenUnit  ,'(int) NETWORK number of Generator units'],
+                'GENW3'     :[OlxAPIConst.SY_nNOgenW3    ,'(int) NETWORK number of Type-3 Wind Plant'],
+                'GENW4'     :[OlxAPIConst.SY_nNOgenW4    ,'(int) NETWORK number of Converter-Interfaced Resource'],
+                'LINE'      :[OlxAPIConst.SY_nNOline     ,'(int) NETWORK number of Transmission lines'],
+                'LOAD'      :[OlxAPIConst.SY_nNOload     ,'(int) NETWORK number of Loads'],
+                'LOADUNIT'  :[OlxAPIConst.SY_nNOloadUnit ,'(int) NETWORK number of Load units'],
+                'LTC'       :[OlxAPIConst.SY_nNOltc      ,'(int) NETWORK number of Load Tap Changer of 2-winding transformers'],
+                'LTC3'      :[OlxAPIConst.SY_nNOltc3     ,'(int) NETWORK number of Load Tap Changer of 3-winding transformers'],
+                'MULINE'    :[OlxAPIConst.SY_nNOmuPair   ,'(int) NETWORK number of Mutual pair'],
+                'SHIFTER'   :[OlxAPIConst.SY_nNOps       ,'(int) NETWORK number of Phase shifter'],
+                'RECLSR'   :[OlxAPIConst.SY_nNOrecloserP,'(int) NETWORK number of Reclosers'],
+                'RLYD'      :[OlxAPIConst.SY_nNOrlyD     ,'(int) NETWORK number of Differential relays'],
+                'RLYDSG'    :[OlxAPIConst.SY_nNOrlyDSG   ,'(int) NETWORK number of DS ground relays'],
+                'RLYDSP'    :[OlxAPIConst.SY_nNOrlyDSP   ,'(int) NETWORK number of DS phase relays'],
+                'RLYGROUP'  :[OlxAPIConst.SY_nNOrlyGroup ,'(int) NETWORK number of Relay Group'],
+                'RLYOCG'    :[OlxAPIConst.SY_nNOrlyOCG   ,'(int) NETWORK number of OC ground relays'],
+                'RLYOCP'    :[OlxAPIConst.SY_nNOrlyOCP   ,'(int) NETWORK number of OC phase relays'],
+                'RLYV'      :[OlxAPIConst.SY_nNOrlyV     ,'(int) NETWORK number of Voltage relays'],
+                'SCHEME'    :[OlxAPIConst.SY_nNOscheme   ,'(int) NETWORK number of Logic schemes'],
+                'SERIESRC'  :[OlxAPIConst.SY_nNOseriescap,'(int) NETWORK number of Series reactors/capacitors'],
+                'SHUNT'     :[OlxAPIConst.SY_nNOshunt    ,'(int) NETWORK number of Shunts'],
+                'SHUNTUNIT' :[OlxAPIConst.SY_nNOshuntUnit,'(int) NETWORK number of Shunt units'],
+                'SVD'       :[OlxAPIConst.SY_nNOsvd      ,'(int) NETWORK number of Switched shunts'],
+                'SWITCH'    :[OlxAPIConst.SY_nNOswitch   ,'(int) NETWORK number of Switches'],
+                'XFMR'      :[OlxAPIConst.SY_nNOxfmr     ,'(int) NETWORK number of 2-winding transformers'],
+                'XFMR3'     :[OlxAPIConst.SY_nNOxfmr3    ,'(int) NETWORK number of 3-winding transformers'],
+                'ZCORRECT'  :[OlxAPIConst.SY_nNOzCorrect ,'(int) NETWORK number of Impedance correction table'],
+                'ZONE'      :[OlxAPIConst.SY_nNOzone     ,'(int) NETWORK number of Zone']}
+__OLXOBJ_PARA__['BUS'] = {
                 'ANGLEP'  :[OlxAPIConst.BUS_dAngleP    ,'(float) Bus voltage angle (degree) from a power flow solution'],
                 'KVP'     :[OlxAPIConst.BUS_dKVP       ,'(float) Bus voltage magnitude (kV) from a power flow solution'],
-                #'VR'      :[OlxAPIConst.BUS_dKVP       ,'(float) Real part of the bus voltage from a power flow solution, in pu'],      #ccc
-                #'VI'      :[OlxAPIConst.BUS_dKVP       ,'(float) Imaginary part of the bus voltage from a power flow solution, in pu'], #ccc
                 'KV'      :[OlxAPIConst.BUS_dKVnominal ,'(float) Bus voltage nominal'],
                 'SPCX'    :[OlxAPIConst.BUS_dSPCx      ,'(float) Bus state plane coordinate - X'],
                 'SPCY'    :[OlxAPIConst.BUS_dSPCy      ,'(float) Bus state plane coordinate - Y'],
-                'AREANO'  :[OlxAPIConst.BUS_nArea      ,'(int) Bus area'],
+                'AREANO'  :[OlxAPIConst.BUS_nArea      ,'(int) Bus area number'],
                 'NO'      :[OlxAPIConst.BUS_nNumber    ,'(int) Bus number'],
                 'SLACK'   :[OlxAPIConst.BUS_nSlack     ,'(int) System slack bus flag: 1-yes; 0-no'],
                 'SUBGRP'  :[OlxAPIConst.BUS_nSubGroup  ,'(int) Bus substation group'],
                 'TAP'     :[OlxAPIConst.BUS_nTapBus    ,'(int) Tap bus flag: 0-no; 1-tap bus; 3-tap bus of 3-terminal line'],
                 'VISIBLE' :[OlxAPIConst.BUS_nVisible   ,'(int) Bus hide ID flag: 1-visible; -2-hidden; 0-not yet placed'],
-                'ZONENO'  :[OlxAPIConst.BUS_nZone      ,'(int) Bus zone'],
-                'MEMO'    :[OlxAPIConst.BUS_sComment   ,'(str) Bus memo'],
+                'ZONENO'  :[OlxAPIConst.BUS_nZone      ,'(int) Bus zone number'],
                 'LOCATION':[OlxAPIConst.BUS_sLocation  ,'(str) Bus location'],
-                'NAME'    :[OlxAPIConst.BUS_sName      ,'(str) Bus name']}
-OLXOBJ_PARA['GEN'] = {\
+                'NAME'    :[OlxAPIConst.BUS_sName      ,'(str) Bus name'],
+                #
+                'TERMINAL'        : [0, '[TERMINAL] List TERMINALs connected to BUS'],
+                'BREAKER'         : [0, '[BREAKER] List Breakers connected to BUS'],
+                'CCGEN'           : [0, '(CCGEN) Voltage controlled current sources connected to BUS'],
+                'DCLINE2'         : [0, '[DCLINE2] List DC transmission lines connected to BUS'],
+                'GEN'             : [0, '(GEN) Generator connected to BUS'],
+                'GENUNIT'         : [0, '[GENUNIT] List Generator units connected to BUS'],
+                'GENW3'           : [0, '(GENW3) Type-3 Wind Plants connected to BUS'],
+                'GENW4'           : [0, '(GENW4) Converter-Interfaced Resource connected to BUS'],
+                'LINE'            : [0, '[LINE] List AC transmission lines connected to BUS'],
+                'LOAD'            : [0, '(LOAD) Load connected to BUS'],
+                'LOADUNIT'        : [0, '[LOADUNIT] List Load units connected to BUS'],
+                'RLYGROUP'        : [0, '[RLYGROUP] List Relays Group connected to BUS'],
+                'SERIESRC'        : [0, '[SERIESRC] List Series reactors/capacitors connected to BUS'],
+                'SHIFTER'         : [0, '[SHIFTER] List Shifters connected to BUS'],
+                'SHUNT'           : [0, '(SHUNT) Shunt connected to BUS'],
+                'SHUNTUNIT'       : [0, '[SHUNTUNIT] List Shunt units connected to BUS'],
+                'SVD'             : [0, '(SVD) Switched Shunts connected to BUS'],
+                'SWITCH'          : [0, '[SWITCH] List Switches connected to BUS'],
+                'XFMR'            : [0, '[XFMR] List 2-winding transformers connected to BUS'],
+                'XFMR3'           : [0, '[XFMR3] List 3-winding transformers connected to BUS']}
+__OLXOBJ_PARA__['TERMINAL'] = {\
+                'BUS'      : [0, '[BUS] List Buses that attached this TERMINAL'],
+                'CID'      : [0, '(str) TERMINAL circuit ID'],
+                'EQUIPMENT': [0, '(EQUIPMENT) EQUIPMENT that attached this TERMINAL'],
+                'FLAG'     : [0, '(int) TERMINAL in-service flag: 1- active; 2- out-of-service'],
+                'OPPOSITE' : [0, '[TERMINAL] List TERMINALs that opposite to this TERMINAL on the EQUIPMENT'],
+                'REMOTE'   : [0, '[TERMINAL] List TERMINALs remote to this TERMINAL\
+                                    \n\t                             All taps are ignored.\
+                                    \n\t                             Close switches are included\
+                                    \n\t                             Out of service branches are ignored'],
+                'RLYGROUP' : [0, '[RLYGROUP] List RLYGROUPs that attached to this TERMINAL \
+                                    \n\t                             RLYGROUP[0] : local RLYGROUP, =None if not found\
+                                    \n\t                             RLYGROUP[i] : remote RLYGROUP \
+                                    \n\t                             All taps are ignored.\
+                                    \n\t                             Close switches are included\
+                                    \n\t                             Out of service branches are ignored']}
+__OLXOBJ_PARA__['GEN'] = {\
                 'ILIMIT1'  :[OlxAPIConst.GE_dCurrLimit1 ,'(float) Generator current limit 1'],
                 'ILIMIT2'  :[OlxAPIConst.GE_dCurrLimit2 ,'(float) Generator current limit 2'],
                 'PGEN'     :[OlxAPIConst.GE_dPgen       ,'(float) Generator MW (load flow solution)'],
@@ -4767,10 +5680,10 @@ OLXOBJ_PARA['GEN'] = {\
                 'REFV'     :[OlxAPIConst.GE_dVSourcePU  ,'(float) Generator internal voltage source per unit magnitude'],
                 'FLAG'     :[OlxAPIConst.GE_nActive     ,'(int) Generator in-service flag: 1- active; 2- out-of-service'],
                 'REG'      :[OlxAPIConst.GE_nFixedPQ    ,'(int) Generator regulation flag: 1- PQ; 0- PV'],
-                #'SLACK'    :[OlxAPIConst.GE_nSlack      ,'(int) Generator slack flag: 1-yes; 0-no'],
                 'BUS'      :[OlxAPIConst.GE_nBusHnd     ,'(BUS) Generators connected BUS'],
-                'CNTBUS'   :[OlxAPIConst.GE_nCtrlBusHnd ,'(BUS) Generators controlled BUS']}
-OLXOBJ_PARA['GENUNIT'] = {\
+                'CNTBUS'   :[OlxAPIConst.GE_nCtrlBusHnd ,'(BUS) Generators controlled BUS'],
+                'GENUNIT'  :[0                          ,'[GENUNIT] List of Generators unit']}
+__OLXOBJ_PARA__['GENUNIT'] = {
                 'MVARATE':[OlxAPIConst.GU_dMVArating  ,'(float) Generator unit rating MVA'],
                 'PMAX'   :[OlxAPIConst.GU_dPmax       ,'(float) Generator unit max MW'],
                 'PMIN'   :[OlxAPIConst.GU_dPmin       ,'(float) Generator unit min MW'],
@@ -4786,8 +5699,9 @@ OLXOBJ_PARA['GENUNIT'] = {\
                 'DATEON' :[OlxAPIConst.GU_sOnDate     ,'(str) Generator unit in service date'],
                 'R'      :[OlxAPIConst.GU_vdR         ,'[float]*5 Generator unit resistances: [subtransient, synchronous, transient, negative sequence, zero sequence]'],
                 'X'      :[OlxAPIConst.GU_vdX         ,'[float]*5 Generator unit reactances : [subtransient, synchronous, transient, negative sequence, zero sequence]'],
-                'GEN'    :[OlxAPIConst.GU_nGenHnd     ,'(GEN) Generator unit generator']}
-OLXOBJ_PARA['GENW3'] = {\
+                'GEN'    :[OlxAPIConst.GU_nGenHnd     ,'(GEN) Generator unit Generator'],
+                'BUS'    :[0                          ,'(BUS) Generator unit BUS']}
+__OLXOBJ_PARA__['GENW3'] = {\
                 'DATEON' :[OlxAPIConst.G3_sOnDate      ,'(str) Generator Type 3 in service date'],
                 'DATEOFF':[OlxAPIConst.G3_sOffDate     ,'(str) Generator Type 3 out of service date'],
                 'MVA'    :[OlxAPIConst.G3_dUnitRatedMVA,'(float) Generator Type 3 MVA unit rated'],
@@ -4808,7 +5722,7 @@ OLXOBJ_PARA['GENW3'] = {\
                 'UNITS'  :[OlxAPIConst.G3_nNOUnits     ,'(int) Generator Type 3 number of units'],
                 'CBAR'   :[OlxAPIConst.G3_nCrowbared   ,'(int) Generator Type 3 Crowbarred flag: 1-yes; 0-no'],
                 'BUS'    :[OlxAPIConst.G3_nBusHnd      ,'(BUS) Generators Type 3 connected BUS']}
-OLXOBJ_PARA['GENW4'] = {\
+__OLXOBJ_PARA__['GENW4'] = {\
                 'DATEON'    :[OlxAPIConst.G4_sOnDate        ,'(str) Generator Type 4 in service date'],
                 'DATEOFF'   :[OlxAPIConst.G4_sOffDate       ,'(str) Generator Type 4 out of service date'],
                 'MVA'       :[OlxAPIConst.G4_dUnitRatedMVA  ,'(float) Generator Type 4 Unit MVA rating'],
@@ -4828,20 +5742,20 @@ OLXOBJ_PARA['GENW4'] = {\
                 'UNITS'     :[OlxAPIConst.G4_nNOUnits       ,'(int) Generator Type 4 number of units'],
                 'CTRLMETHOD':[OlxAPIConst.G4_nControlMethod ,'(int) Generator Type 4 control method'],
                 'BUS'       :[OlxAPIConst.G4_nBusHnd        ,'(BUS) Generators Type 4 connected BUS']}
-OLXOBJ_PARA['CCGEN'] = {\
+__OLXOBJ_PARA__['CCGEN'] = {\
                 'MVARATE'   :[OlxAPIConst.CC_dMVArating    ,'(float) Voltage controlled current source MVA rating'],
                 'VMAXMUL'   :[OlxAPIConst.CC_dVmax         ,'(float) Voltage controlled current source maximum voltage limit in pu'],
                 'VMIN'      :[OlxAPIConst.CC_dVmin         ,'(float) Voltage controlled current source minimum voltage limit in pu'],
                 'BLOCKPHASE':[OlxAPIConst.CC_nBlockOnPhaseV,'(int) Voltage controlled current source number block on phase'],
                 'FLAG'      :[OlxAPIConst.CC_nInService    ,'(int) Voltage controlled current source in-service flag: 1-true; 2-false'],
-                'VLOC'      :[OlxAPIConst.CC_nVloc         ,'(int) Voltage controlled current source voltage measurement location'],
+                'VLOC'      :[OlxAPIConst.CC_nVloc         ,'(int) Voltage controlled current source voltage measurement location 0-Device terminal; 1-Network side of transformer'],
                 'DATEOFF'   :[OlxAPIConst.CC_sOffDate      ,'(str) Voltage controlled current source out of service date'],
                 'DATEON'    :[OlxAPIConst.CC_sOnDate       ,'(str) Voltage controlled current source in service date'],
                 'A'         :[OlxAPIConst.CC_vdAng         ,'[float]*10 Voltage controlled current source angle'],
                 'I'         :[OlxAPIConst.CC_vdI           ,'[float]*10 Voltage controlled current source current'],
                 'V'         :[OlxAPIConst.CC_vdV           ,'[float]*10 Voltage controlled current source voltage'],
                 'BUS'       :[OlxAPIConst.CC_nBusHnd       ,'(BUS) Voltage controlled current source bus']}
-OLXOBJ_PARA['XFMR'] = {\
+__OLXOBJ_PARA__['XFMR'] = {\
                 'B'         :[OlxAPIConst.XR_dB            ,'(float) 2-winding transformer B'],
                 'B0'        :[OlxAPIConst.XR_dB0           ,'(float) 2-winding transformer Bo'],
                 'B1'        :[OlxAPIConst.XR_dB1           ,'(float) 2-winding transformer B1'],
@@ -4877,7 +5791,7 @@ OLXOBJ_PARA['XFMR'] = {\
                 'AUTOX'     :[OlxAPIConst.XR_nAuto         ,'(int) 2-winding transformer auto transformer flag:1-true;0-false'],
                 'FLAG'      :[OlxAPIConst.XR_nInService    ,'(int) 2-winding transformer in-service flag: 1- active; 2- out-of-service'],
                 'GANGED'    :[OlxAPIConst.XR_nLTCGanged    ,'(int) 2-winding transformer LTC tag ganged flag: 0-False; 1-True'],
-                'PRIORITY'  :[OlxAPIConst.XR_nLTCPriority  ,'(int) 2-winding transformer LTC adjustment priority'],
+                'PRIORITY'  :[OlxAPIConst.XR_nLTCPriority  ,'(int) 2-winding transformer LTC adjustment priority 0-Normal, 1-Medieum, 2-High'],
                 'LTCSIDE'   :[OlxAPIConst.XR_nLTCside      ,'(int) 2-winding transformer LTC side: 1; 2; 0'],
                 'LTCTYPE'   :[OlxAPIConst.XR_nLTCtype      ,'(int) 2-winding transformer LTC type: 1- control voltage; 2- control MVAR'],
                 'LTCCTRL'   :[OlxAPIConst.XR_nLTCCtrlBusHnd,'(str) 2-winding transformer ID string of the bus whose voltage magnitude is to be regulated by the LTC'],
@@ -4891,9 +5805,9 @@ OLXOBJ_PARA['XFMR'] = {\
                 'METEREDEND':[OlxAPIConst.XR_nMeteredEnd   ,'(int) 2-winding transformer metered bus 1-at Bus1; 2 at Bus2; 0 XFMR in a single area'],
                 'BUS1'      :[OlxAPIConst.XR_nBus1Hnd      ,'(BUS) 2-winding transformer bus 1'],
                 'BUS2'      :[OlxAPIConst.XR_nBus2Hnd      ,'(BUS) 2-winding transformer bus 2'],
-                'RLYGROUP1' :[OlxAPIConst.XR_nRlyGr1Hnd    ,'(RLYGROUP) 2-winding transformer side 1 relay group'],
-                'RLYGROUP2' :[OlxAPIConst.XR_nRlyGr2Hnd    ,'(RLYGROUP) 2-winding transformer side 2 relay group']}
-OLXOBJ_PARA['XFMR3'] = {\
+                'RLYGROUP1' :[OlxAPIConst.XR_nRlyGr1Hnd    ,'(RLYGROUP) 2-winding transformer side 1 Relay Group'],
+                'RLYGROUP2' :[OlxAPIConst.XR_nRlyGr2Hnd    ,'(RLYGROUP) 2-winding transformer side 2 Relay Group']}
+__OLXOBJ_PARA__['XFMR3'] = {\
                 'B'        :[OlxAPIConst.X3_dB            ,'(float) 3-winding transformer B'],
                 'B0'       :[OlxAPIConst.X3_dB0           ,'(float) 3-winding transformer B0'],
                 'BASEMVA'  :[OlxAPIConst.X3_dBaseMVA      ,'(float) 3-winding transformer base MVA for per-unit quantities'],
@@ -4940,10 +5854,10 @@ OLXOBJ_PARA['XFMR3'] = {\
                 'XMG0'     :[OlxAPIConst.X3_dXst          ,'(float) 3-winding transformer XMG0'], #ccc
                 'AUTOX'    :[OlxAPIConst.X3_nAuto         ,'(int) 3-winding transformer auto transformer flag:1-true;0-false'],
                 'FLAG'     :[OlxAPIConst.X3_nInService    ,'(int) 3-winding transformer in-service flag: 1- active; 2- out-of-service'],
-                'Z0METHOD' :[OlxAPIConst.X3_nInService    ,'(int) 3-winding transformer Z0 method'], #ccc
+                'Z0METHOD' :[OlxAPIConst.X3_nInService    ,'(int) 3-winding transformer Z0 method 1-Short circuit impedance; 2-Classical T model impedance'], #ccc
                 'FICTBUSNO':[OlxAPIConst.X3_nFictBusNo    ,'(int) 3-winding transformer Fiction bus Number'],
                 'GANGED'   :[OlxAPIConst.X3_nLTCGanged    ,'(int) 3-winding transformer LTC tag ganged flag: 0-False; 1-True'],
-                'PRIORITY' :[OlxAPIConst.X3_nLTCPriority  ,'(int) 3-winding transformer LTC adjustment priority'],
+                'PRIORITY' :[OlxAPIConst.X3_nLTCPriority  ,'(int) 3-winding transformer LTC adjustment priority 0-Normal, 1-Medieum, 2-High'],
                 'CONFIGP'  :[OlxAPIConst.X3_sCfgP         ,'(str) 3-winding transformer primary winding'],
                 'CONFIGS'  :[OlxAPIConst.X3_sCfgS         ,'(str) 3-winding transformer secondary winding'],
                 'CONFIGST' :[OlxAPIConst.X3_sCfgST        ,'(str) 3-winding transformer secondary winding in test'],
@@ -4956,10 +5870,10 @@ OLXOBJ_PARA['XFMR3'] = {\
                 'BUS1'     :[OlxAPIConst.X3_nBus1Hnd      ,'(BUS) 3-winding transformer bus 1'],
                 'BUS2'     :[OlxAPIConst.X3_nBus2Hnd      ,'(BUS) 3-winding transformer bus 2'],
                 'BUS3'     :[OlxAPIConst.X3_nBus3Hnd      ,'(BUS) 3-winding transformer bus 3'],
-                'RLYGROUP1':[OlxAPIConst.X3_nRlyGr1Hnd    ,'(RLYGROUP) 3-winding transformer relay group 1'],
-                'RLYGROUP2':[OlxAPIConst.X3_nRlyGr2Hnd    ,'(RLYGROUP) 3-winding transformer relay group 2'],
-                'RLYGROUP3':[OlxAPIConst.X3_nRlyGr3Hnd    ,'(RLYGROUP) 3-winding transformer relay group 3']}
-OLXOBJ_PARA['SHIFTER'] = {\
+                'RLYGROUP1':[OlxAPIConst.X3_nRlyGr1Hnd    ,'(RLYGROUP) 3-winding transformer Relay Group 1'],
+                'RLYGROUP2':[OlxAPIConst.X3_nRlyGr2Hnd    ,'(RLYGROUP) 3-winding transformer Relay Group 2'],
+                'RLYGROUP3':[OlxAPIConst.X3_nRlyGr3Hnd    ,'(RLYGROUP) 3-winding transformer Relay Group 3']}
+__OLXOBJ_PARA__['SHIFTER'] = {\
                 'SHIFTANGLE':[OlxAPIConst.PS_dAngle      ,'(float) Phase shifter shift angle'],
                 'ANGMAX'    :[OlxAPIConst.PS_dAngleMax   ,'(float) Phase shifter shift angle max'],
                 'ANGMIN'    :[OlxAPIConst.PS_dAngleMin   ,'(float) Phase shifter shift angle min'],
@@ -4996,9 +5910,9 @@ OLXOBJ_PARA['SHIFTER'] = {\
                 'DATEON'    :[OlxAPIConst.PS_sOnDate     ,'(str) Phase shifter in service date'],
                 'BUS1'      :[OlxAPIConst.PS_nBus1Hnd    ,'(BUS) Phase shifter bus 1'],
                 'BUS2'      :[OlxAPIConst.PS_nBus2Hnd    ,'(BUS) Phase shifter bus 2'],
-                'RLYGROUP1' :[OlxAPIConst.PS_nRlyGr1Hnd  ,'(RLYGROUP) Phase shifter relay group 1'],
-                'RLYGROUP2' :[OlxAPIConst.PS_nRlyGr2Hnd  ,'(RLYGROUP) Phase shifter relay group 2']}
-OLXOBJ_PARA['LINE'] = {\
+                'RLYGROUP1' :[OlxAPIConst.PS_nRlyGr1Hnd  ,'(RLYGROUP) Phase shifter Relay Group 1'],
+                'RLYGROUP2' :[OlxAPIConst.PS_nRlyGr2Hnd  ,'(RLYGROUP) Phase shifter Relay Group 2']}
+__OLXOBJ_PARA__['LINE'] = {\
                 'B1'       :[OlxAPIConst.LN_dB1         ,'(float) Line B1 , in pu'],
                 'B10'      :[OlxAPIConst.LN_dB10        ,'(float) Line B10, in pu'],
                 'B2'       :[OlxAPIConst.LN_dB2         ,'(float) Line B2, in pu'],
@@ -5016,18 +5930,18 @@ OLXOBJ_PARA['LINE'] = {\
                 'METEREDEND':[OlxAPIConst.LN_nMeteredEnd ,'(int) Line meteted flag: 1- at Bus1; 2-at Bus2; 0-line is in a single area;'], #ccc
                 'I2T'      :[OlxAPIConst.LN_dI2T        ,'(float) I^2T rating of line in ampere^2 Sec.'], #ccc
                 'CID'      :[OlxAPIConst.LN_sID         ,'(str) Line circuit ID'],
-                'UNIT'     :[OlxAPIConst.LN_sLengthUnit ,'(str) Line length unit'],
+                'UNIT'     :[OlxAPIConst.LN_sLengthUnit ,'(str) Line length unit in [ft,kt,mi,m,km]'],
                 'NAME'     :[OlxAPIConst.LN_sName       ,'(str) Line name'],
                 'DATEOFF'  :[OlxAPIConst.LN_sOffDate    ,'(str) Line out of service date'],
                 'DATEON'   :[OlxAPIConst.LN_sOnDate     ,'(str) Line in service date'],
-                'TYPE'     :[OlxAPIConst.LN_sType       ,'(str) Line table type'],
+                'TYPE'     :[OlxAPIConst.LN_sType       ,"(str) Line table type in ['','Delta Dove','Horz. Dove','Vert. Dove]"],
                 'RATG'     :[OlxAPIConst.LN_vdRating    ,'[float]*4 Line ratings'],
                 'BUS1'     :[OlxAPIConst.LN_nBus1Hnd    ,'(BUS) Line bus 1'],
                 'BUS2'     :[OlxAPIConst.LN_nBus2Hnd    ,'(BUS) Line bus 2'],
                 'MULINE'   :[OlxAPIConst.LN_nMuPairHnd  ,'(MULINE) Line mutual pair'],
-                'RLYGROUP1':[OlxAPIConst.LN_nRlyGr1Hnd  ,'(RLYGROUP) Line relay group 1'],
-                'RLYGROUP2':[OlxAPIConst.LN_nRlyGr2Hnd  ,'(RLYGROUP) Line relay group 2']}
-OLXOBJ_PARA['DCLINE2'] = {\
+                'RLYGROUP1':[OlxAPIConst.LN_nRlyGr1Hnd  ,'(RLYGROUP) Line Relay Group 1'],
+                'RLYGROUP2':[OlxAPIConst.LN_nRlyGr2Hnd  ,'(RLYGROUP) Line Relay Group 2']}
+__OLXOBJ_PARA__['DCLINE2'] = {\
                 'NAME'   :[OlxAPIConst.DC_sName         ,'(string) DC Line name'],
                 'CID'    :[OlxAPIConst.DC_sID           ,'(string) DC Line circuit ID'],
                 'DATEON' :[OlxAPIConst.DC_sOnDate       ,'(string) DC Line in service date'],
@@ -5052,7 +5966,7 @@ OLXOBJ_PARA['DCLINE2'] = {\
                 'BRIDGE' :[OlxAPIConst.DC_vnBridges     ,'[int]*2 DC Line No. of bridges'],
                 'BUS1'   :[OlxAPIConst.DC_nBus1Hnd      ,'(BUS) DC Line bus 1'],
                 'BUS2'   :[OlxAPIConst.DC_nBus2Hnd      ,'(BUS) DC Line bus 2']}
-OLXOBJ_PARA['SERIESRC'] = {\
+__OLXOBJ_PARA__['SERIESRC'] = {\
                 'IPR'      :[OlxAPIConst.SC_dIpr      ,'(float) Series capacitor/reactor protective level current'],
                 'SCOMP'    :[OlxAPIConst.SC_nSComp    ,'(int) Series capacitor/reactor bypassed flag 1- no bypassed; 2-yes bypassed '],
                 'R'        :[OlxAPIConst.SC_dR        ,'(float) Series capacitor/reactor R'],
@@ -5064,9 +5978,9 @@ OLXOBJ_PARA['SERIESRC'] = {\
                 'DATEON'   :[OlxAPIConst.SC_sOnDate   ,'(str) Series capacitor/reactor in service date'],
                 'BUS1'     :[OlxAPIConst.SC_nBus1Hnd  ,'(BUS) Series capacitor/reactor bus 1'],
                 'BUS2'     :[OlxAPIConst.SC_nBus2Hnd  ,'(BUS) Series capacitor/reactor bus 2'],
-                'RLYGROUP1':[OlxAPIConst.SC_nRlyGr1Hnd,'(RLYGROUP) Series capacitor/reactor relay group 1'],
-                'RLYGROUP2':[OlxAPIConst.SC_nRlyGr2Hnd,'(RLYGROUP) Series capacitor/reactor relay group 2']}
-OLXOBJ_PARA['SWITCH'] = {\
+                'RLYGROUP1':[OlxAPIConst.SC_nRlyGr1Hnd,'(RLYGROUP) Series capacitor/reactor Relay Group 1'],
+                'RLYGROUP2':[OlxAPIConst.SC_nRlyGr2Hnd,'(RLYGROUP) Series capacitor/reactor Relay Group 2']}
+__OLXOBJ_PARA__['SWITCH'] = {\
                 'RATING'   :[OlxAPIConst.SW_dRating   ,'(float) Switch current rating'],
                 'DEFAULT'  :[OlxAPIConst.SW_nDefault  ,'(int) Switch default position flag: 1- normaly open; 2- normaly close; 0-Not defined'],
                 'FLAG'     :[OlxAPIConst.SW_nInService,'(int) Switch in-service flag: 1- active; 2- out-of-service'],
@@ -5077,52 +5991,54 @@ OLXOBJ_PARA['SWITCH'] = {\
                 'DATEON'   :[OlxAPIConst.SW_sOnDate   ,'(str) Switch in service date'],
                 'BUS1'     :[OlxAPIConst.SW_nBus1Hnd  ,'(BUS) Switch bus 1'],
                 'BUS2'     :[OlxAPIConst.SW_nBus2Hnd  ,'(BUS) Switch bus 2'],
-                'RLYGROUP1':[OlxAPIConst.SW_nRlyGrHnd1,'(RLYGROUP) Switch relay group 1'],
-                'RLYGROUP2':[OlxAPIConst.SW_nRlyGrHnd2,'(RLYGROUP) Switch relay group 2']}
-OLXOBJ_PARA['LOAD'] = {\
+                'RLYGROUP1':[OlxAPIConst.SW_nRlyGrHnd1,'(RLYGROUP) Switch Relay Group 1'],
+                'RLYGROUP2':[OlxAPIConst.SW_nRlyGrHnd2,'(RLYGROUP) Switch Relay Group 2']}
+__OLXOBJ_PARA__['LOAD'] = {\
                 'P'         :[OlxAPIConst.LD_dPload     ,'(float) Total load MW (load flow solution)'],
                 'Q'         :[OlxAPIConst.LD_dQload     ,'(float) Total load MVAR (load flow solution)'],
                 'FLAG'      :[OlxAPIConst.LD_nActive    ,'(int) Load in-service flag: 1- active; 2- out-of-service'],
                 'UNGROUNDED':[OlxAPIConst.LD_nUnGrounded,'(int) Load UnGrounded 1-UnGrounded 0-Grounded'], # #
-                'BUS'       :[OlxAPIConst.LD_nBusHnd    ,'(BUS) Load bus']}
-OLXOBJ_PARA['LOADUNIT'] = {\
+                'BUS'       :[OlxAPIConst.LD_nBusHnd    ,'(BUS) Load bus'],
+                'LOADUNIT'  :[0                         ,'[LOADUNIT] List LOAD. units in LOAD']}
+__OLXOBJ_PARA__['LOADUNIT'] = {\
                 'P'      :[OlxAPIConst.LU_dPload  ,'(float) Load unit MW (load flow solution)'],
                 'Q'      :[OlxAPIConst.LU_dQload  ,'(float) Load unit MVAR (load flow solution)'],
                 'FLAG'   :[OlxAPIConst.LU_nOnline ,'(int) Load unit in-service flag: 1-active; 2- out-of-service'],
-                'CID'    :[OlxAPIConst.LU_sID     ,'(str) Load unit ID'],
+                'CID'    :[OlxAPIConst.LU_sID     ,'(str) Load unit circuit ID'],
                 'DATEOFF':[OlxAPIConst.LU_sOffDate,'(str) Load unit out of service date'],
                 'DATEON' :[OlxAPIConst.LU_sOnDate ,'(str) Load unit in service date'],
                 'MVAR'   :[OlxAPIConst.LU_vdMVAR  ,'[float]*3 Load unit MVARs: [const. P, const. I, const. Z]'],
                 'MW'     :[OlxAPIConst.LU_vdMW    ,'[float]*3 Load unit MWs: [const. P, const. I, const. Z]'],
-                'LOAD'   :[OlxAPIConst.LU_nLoadHnd,'(LOAD) Load unit load']}
-OLXOBJ_PARA['SHUNT'] = {\
+                'LOAD'   :[OlxAPIConst.LU_nLoadHnd,'(LOAD) Load unit load'],
+                'BUS'    :[0                      ,'(BUS) Load unit BUS']}
+__OLXOBJ_PARA__['SHUNT'] = {\
                 'FLAG'   :[OlxAPIConst.SH_nActive ,'(int) Shunt in-service flag: 1- active; 2- out-of-service'],
                 'BUS'    :[OlxAPIConst.SH_nBusHnd ,'(BUS) Shunt Bus']}
-OLXOBJ_PARA['SHUNTUNIT'] = {\
+__OLXOBJ_PARA__['SHUNTUNIT'] = {\
                 'B'      :[OlxAPIConst.SU_dB       ,'(float) Shunt unit succeptance (positive sequence)'],
                 'B0'     :[OlxAPIConst.SU_dB0      ,'(float) Shunt unit succeptance (zero sequence)'],
                 'G'      :[OlxAPIConst.SU_dG       ,'(float) Shunt unit conductance (positive sequence)'],
                 'G0'     :[OlxAPIConst.SU_dG0      ,'(float) Shunt unit conductance (zero sequence)'],
-                'TX3'    :[OlxAPIConst.SU_n3WX     ,'(int) Shunt unit 3-winding transformer flag'],
+                'TX3'    :[OlxAPIConst.SU_n3WX     ,'(int) Shunt unit 3-winding transformer flag: 1-true;0-false'],
                 'FLAG'   :[OlxAPIConst.SU_nOnline  ,'(int) Shunt unit in-service flag: 1- active; 2- out-of-service'],
                 'CID'    :[OlxAPIConst.SU_sID      ,'(str) Shunt unit ID'],
                 'DATEOFF':[OlxAPIConst.SU_sOffDate ,'(str) Shunt unit out of service date'],
                 'DATEON' :[OlxAPIConst.SU_sOnDate  ,'(str) Shunt unit in service date'],
                 'SHUNT'  :[OlxAPIConst.SU_nShuntHnd,'(SHUNT) Shunt unit shunt']}
-OLXOBJ_PARA['SVD'] = {\
+__OLXOBJ_PARA__['SVD'] = {\
                 'B_USE'  :[OlxAPIConst.SV_dB         ,'(float) SVD admitance in use'],
                 'VMAX'   :[OlxAPIConst.SV_dVmax      ,'(float) SVD max V'],
                 'VMIN'   :[OlxAPIConst.SV_dVmin      ,'(float) SVD min V'],
                 'FLAG'   :[OlxAPIConst.SV_nActive    ,'(int) SVD in-service flag: 1- active; 2- out-of-service'],
-                'MODE'   :[OlxAPIConst.SV_nCtrlMode  ,'(int) SVD control mode'],
+                'MODE'   :[OlxAPIConst.SV_nCtrlMode  ,'(int) SVD control mode: 0-Fixed; 1-Discrete; 2-Continous'],
                 'DATEOFF':[OlxAPIConst.SV_sOffDate   ,'(str) SVD out of service date'],
                 'DATEON' :[OlxAPIConst.SV_sOnDate    ,'(str) SVD in service date'],
                 'B0'    :[OlxAPIConst.SV_vdB0inc    ,'[float]*8 SVD increment zero admitance'],
                 'B'     :[OlxAPIConst.SV_vdBinc     ,'[float]*8 SVD increment admitance'],
                 'STEP'   :[OlxAPIConst.SV_vnNoStep   ,'[int]*8 SVD number of step'],
                 'BUS'    :[OlxAPIConst.SV_nBusHnd    ,'(BUS) SVD Bus'],
-                'CNTBS'  :[OlxAPIConst.SV_nCtrlBusHnd,'(BUS) SVD controled Bus']}
-OLXOBJ_PARA['BREAKER'] = {\
+                'CNTBUS' :[OlxAPIConst.SV_nCtrlBusHnd,'(BUS) SVD controled Bus']}
+__OLXOBJ_PARA__['BREAKER'] = {\
                 'CPT1'      :[OlxAPIConst.BK_dCPT1        ,'(float) Breaker contact parting time for group 1 (cycles)'],
                 'CPT2'      :[OlxAPIConst.BK_dCPT2        ,'(float) Breaker contact parting time for group 2 (cycles)'],
                 'INTRTIME'  :[OlxAPIConst.BK_dCycles      ,'(float) Breaker interrupting time (cycles)'],
@@ -5139,8 +6055,6 @@ OLXOBJ_PARA['BREAKER'] = {\
                 'RATINGTYPE':[OlxAPIConst.BK_nRatingType  ,'(int) Breaker rating type: 0- symmetrical current basis;1- total current basis; 2- IEC'],
                 'OPS1'      :[OlxAPIConst.BK_nTotalOps1   ,'(int) Breaker total operations for group 1'],
                 'OPS2'      :[OlxAPIConst.BK_nTotalOps2   ,'(int) Breaker total operations for group 2'],
-                #'SOBJLST1'  :[OlxAPIConst.BK_sEquipGrp1   ,'(str) Breaker protected equipment group 1 in string format'],
-                #'SOBJLST2'  :[OlxAPIConst.BK_sEquipGrp2   ,'(str) Breaker protected equipment group 2 in string format'],
                 'NAME'      :[OlxAPIConst.BK_sID          ,'(str) Breaker name (ID)'],
                 'RECLOSE1'  :[OlxAPIConst.BK_vdRecloseInt1,'[float]*3 Breaker reclosing intervals for group 1 (s)'],
                 'RECLOSE2'  :[OlxAPIConst.BK_vdRecloseInt2,'[float]*3 Breaker reclosing intervals for group 2 (s)'],
@@ -5149,7 +6063,7 @@ OLXOBJ_PARA['BREAKER'] = {\
                 'G1OUTAGES' :[OlxAPIConst.BK_vnG1OutageHnd,'[EQUIPMENT]*10 Breaker protected equipment group 1 List of additional outage'],
                 'OBJLST2'   :[OlxAPIConst.BK_vnG2DevHnd   ,'[EQUIPMENT]*10 Breaker protected equipment group 2 List of equipment'],
                 'G2OUTAGES' :[OlxAPIConst.BK_vnG2OutageHnd,'[EQUIPMENT]*10 Breaker protected equipment group 2 List of additional outage']}
-OLXOBJ_PARA['MULINE'] = {\
+__OLXOBJ_PARA__['MULINE'] = {\
                 'FROM1'     :[OlxAPIConst.MU_vdFrom1  ,'[float]*5 Mutual coupling pair line 1 From percent'],
                 'FROM2'     :[OlxAPIConst.MU_vdFrom2  ,'[float]*5 Mutual coupling pair line 2 From percent'],
                 'TO1'       :[OlxAPIConst.MU_vdTo1    ,'[float]*5 Mutual coupling pair line1 To percent'],
@@ -5159,7 +6073,7 @@ OLXOBJ_PARA['MULINE'] = {\
                 'LINE1'     :[OlxAPIConst.MU_nHndLine1,'(LINE) Mutual coupling pair line 1'],
                 'LINE2'     :[OlxAPIConst.MU_nHndLine2,'(LINE) Mutual coupling pair line 2']}
 #
-OLXOBJ_PARA['RLYGROUP'] = {\
+__OLXOBJ_PARA__['RLYGROUP'] = {\
                 'INTRPTIME' :[OlxAPIConst.RG_dBreakerTime ,'(float) Relay group interrupting time (cycles)'],
                 'FLAG'      :[OlxAPIConst.RG_nInService   ,'(int) Relay group in-service flag: 1- active; 2- out-of-service'],
                 'OPFLAG'    :[OlxAPIConst.RG_nOps         ,'(int) Relay group total operations'],
@@ -5171,7 +6085,7 @@ OLXOBJ_PARA['RLYGROUP'] = {\
                 'LOGICRECL' :[OlxAPIConst.RG_nReclLogicHnd,'(SCHEME) Relay group reclose logic scheme'],
                 'LOGICTRIP' :[OlxAPIConst.RG_nTripLogicHnd,'(SCHEME) Relay group trip logic scheme']}
 #
-OLXOBJ_PARA['RLYOCG'] = {\
+__OLXOBJ_PARA__['RLYOCG'] = {\
                 'ID'        :[OlxAPIConst.OG_sID          ,'(str) OC ground relay ID'],
                 'ASSETID'   :[OlxAPIConst.OG_sAssetID     ,'(str) OC ground relay asset ID'],
                 'DATEOFF'   :[OlxAPIConst.OG_sOffDate     ,'(str) OC ground relay out of service date'],
@@ -5179,7 +6093,7 @@ OLXOBJ_PARA['RLYOCG'] = {\
                 'FLAG'      :[OlxAPIConst.OG_nInService   ,'(int) OC ground relay in-service flag: 1- active; 2- out-of-service'],
                 'RLYGROUP'  :[OlxAPIConst.OG_nRlyGrHnd    ,'(RLYGROUP) OC ground relay group']}
 #
-OLXOBJ_RLYSET['RLYOCG'] = {\
+__OLXOBJ_RLYSET__['RLYOCG'] = {\
                 'CT'         :[OlxAPIConst.OG_dCT          ,'(float) OC ground relay CT ratio'],
                 'OPI'        :[OlxAPIConst.OG_nOperateOn   ,'(int) OC ground relay Operate On: 0-3I0; 1-3I2; 2-I0; 3-I2'],
                 'ASYM'       :[OlxAPIConst.OG_nDCOffset    ,'(int) OC ground relay sentitive to DC offset:1-true; 0-false'],
@@ -5195,12 +6109,12 @@ OLXOBJ_RLYSET['RLYOCG'] = {\
                 'TIMERESET'  :[OlxAPIConst.OG_dResetTime   ,'(float) OC ground relay reset time'],
                 'DTTIMEADD'  :[OlxAPIConst.OG_dTimeAdd2    ,'(float) OC ground relay time adder for INST/DTx'],
                 'DTTIMEMULT' :[OlxAPIConst.OG_dTimeMult2   ,'(float) OC ground relay time multiplier for INST/DTx'],
-                'INSTSETTING':[OlxAPIConst.OG_dInst        ,'(float) OC ground relay instantaneous setting'], #
+                'INSTSETTING':[OlxAPIConst.OG_dInst        ,'(float) OC ground relay instantaneous setting'],
                 'DTPICKUP'   :[OlxAPIConst.OG_vdDTPickup   ,'[float]*5 OC ground relay Pickups Sec.A '],
                 'DTDELAY'    :[OlxAPIConst.OG_vdDTDelay    ,'[float]*5 OC ground relay Delays seconds'],
-                'MINTIME'    :[OlxAPIConst.OG_dMinTripTime ,'(float) OC ground relay minimum trip time'],   #
+                'MINTIME'    :[OlxAPIConst.OG_dMinTripTime ,'(float) OC ground relay minimum trip time'],
                 'TYPE'       :[OlxAPIConst.OG_sType        ,'(str) OC ground relay type'],
-                'TAPTYPE'    :[OlxAPIConst.OG_sTapType     ,'(str) OC ground relay tap type'],         #ccc
+                'TAPTYPE'    :[OlxAPIConst.OG_sTapType     ,'(str) OC ground relay tap type'],
                 'LIBNAME'    :[OlxAPIConst.OG_sLibrary     ,'(str) OC ground relay Library'],
                 'PACKAGE'    :[OlxAPIConst.OG_nPackage     ,'(int) OC ground relay Package option'],
                 # polar = [0,1]
@@ -5225,7 +6139,7 @@ OLXOBJ_RLYSET['RLYOCG'] = {\
                 '32GZ0ANG'   :[OlxAPIConst.OG_vdDirSettingV15 ,[3],5,'(float) OC ground relay direction: Z0ANG: Line Z0 angle (Deg.)'],
                 '32GPTR'     :[OlxAPIConst.OG_vdDirSettingV15 ,[3],1,'(float) OC ground relay direction: PTR: PT ratio']}
 #
-OLXOBJ_PARA['RLYOCP'] = {\
+__OLXOBJ_PARA__['RLYOCP'] = {\
                 'ID'         :[OlxAPIConst.OP_sID           ,'(str) OC phase relay ID'],
                 'ASSETID'    :[OlxAPIConst.OP_sAssetID      ,'(str) OC phase relay asset ID'],
                 'DATEOFF'    :[OlxAPIConst.OP_sOffDate      ,'(str) OC phase relay out of service date'],
@@ -5233,7 +6147,7 @@ OLXOBJ_PARA['RLYOCP'] = {\
                 'FLAG'       :[OlxAPIConst.OP_nInService    ,'(int) OC phase relay in-service flag: 1- active; 2- out-of-service'],
                 'RLYGROUP'   :[OlxAPIConst.OP_nRlyGrHnd     ,'(RLYGROUP) OC phase relay group']}
 #
-OLXOBJ_RLYSET['RLYOCP'] = {\
+__OLXOBJ_RLYSET__['RLYOCP'] = {\
                 'CT'         :[OlxAPIConst.OP_dCT           ,'(float) OC phase relay CT ratio'],
                 'CTCONNECT'  :[OlxAPIConst.OP_nByCTConnect  ,'(int) OC phase reley CT connection: 0- Wye; 1-Delta'],
                 'ASYM'       :[OlxAPIConst.OP_nDCOffset     ,'(int) OC phase relay sentitive to DC offset: 1-true; 0-false'],
@@ -5249,12 +6163,12 @@ OLXOBJ_RLYSET['RLYOCP'] = {\
                 'TIMEMULT'   :[OlxAPIConst.OP_dTimeMult     ,'(float) OC phase relay time multiplier'],
                 'TIMERESET'  :[OlxAPIConst.OP_dResetTime    ,'(float) OC phase relay reset time'],
                 'VOLTPERCENT':[OlxAPIConst.OP_dVCtrlRestPcnt,'(float) OC_phase relay voltage controlled or restrained percentage'],
-                'DTTIMEADD'   :[OlxAPIConst.OP_dTimeAdd2     ,'(float) OC phase relay time adder for INST/DTx'],
-                'DTTIMEMULT'  :[OlxAPIConst.OP_dTimeMult2    ,'(float) OC phase relay time multiplier for INST/DTx'],
+                'DTTIMEADD'   :[OlxAPIConst.OP_dTimeAdd2    ,'(float) OC phase relay time adder for INST/DTx'],
+                'DTTIMEMULT'  :[OlxAPIConst.OP_dTimeMult2   ,'(float) OC phase relay time multiplier for INST/DTx'],
                 'INSTSETTING':[OlxAPIConst.OP_dInst         ,'(float) OC phase relay instantaneous setting'],
                 'DTPICKUP'   :[OlxAPIConst.OP_vdDTPickup    ,'[float]*8 OC phase relay Pickup'],
                 'DTDELAY'    :[OlxAPIConst.OP_vdDTDelay     ,'[float]*8 OC phase relay Delay' ],
-                'MINTIME'    :[OlxAPIConst.OP_dMinTripTime  ,'(float) OC phase relay minimum trip time'],   #
+                'MINTIME'    :[OlxAPIConst.OP_dMinTripTime  ,'(float) OC phase relay minimum trip time'],
                 'TYPE'       :[OlxAPIConst.OP_sType         ,'(str) OC phase relay type'],
                 'TAPTYPE'    :[OlxAPIConst.OP_sTapType      ,'(str) OC phase relay tap type'],
                 'LIBNAME'    :[OlxAPIConst.OP_sLibrary      ,'(str) OC phase relay Library'],
@@ -5273,7 +6187,7 @@ OLXOBJ_RLYSET['RLYOCP'] = {\
                 '32QZ1ANG'   :[OlxAPIConst.OP_vdDirSettingV15 ,[2],6,'(float) OC phase relay direction: Z1ANG: Line Z1 angle (Deg.)'],
                 '32QPTR'     :[OlxAPIConst.OP_vdDirSettingV15 ,[2],1,'(float) OC phase relay direction: PTR: PT ratio']}
 #
-OLXOBJ_PARA['FUSE'] = {\
+__OLXOBJ_PARA__['FUSE'] = {\
                 'ID'        :[OlxAPIConst.FS_sID       ,'(str) Fuse name(ID)'],
                 'ASSETID'   :[OlxAPIConst.FS_sAssetID  ,'(str) Fuse asset ID'],
                 'DATEOFF'   :[OlxAPIConst.FS_sOffDate  ,'(str) Fuse out of service date'],
@@ -5288,7 +6202,7 @@ OLXOBJ_PARA['FUSE'] = {\
                 'TYPE'      :[OlxAPIConst.FS_sType     ,'(str) Fuse type'],
                 'RLYGROUP'  :[OlxAPIConst.FS_nRlyGrHnd ,'(RLYGROUP) Fuse relay group']}
 #
-OLXOBJ_PARA['RLYDSG'] = {\
+__OLXOBJ_PARA__['RLYDSG'] = {\
                 'ID'          :[OlxAPIConst.DG_sID         ,'(str) DS ground relay name(ID)'],
                 'TYPE'        :[OlxAPIConst.DG_sType       ,'(str) DS ground relay type (ID2)'],
                 'ASSETID'     :[OlxAPIConst.DG_sAssetID    ,'(str) DS ground relay asset ID'],
@@ -5297,7 +6211,7 @@ OLXOBJ_PARA['RLYDSG'] = {\
                 'FLAG'        :[OlxAPIConst.DG_nInService  ,'(int) DS ground relay in-service flag: 1- active; 2- out-of-service'],
                 'RLYGROUP'    :[OlxAPIConst.DG_nRlyGrHnd   ,'(RLYGROUP) DS ground relay group']}
 #
-OLXOBJ_RLYSET['RLYDSG'] = {\
+__OLXOBJ_RLYSET__['RLYDSG'] = {\
                 'DSTYPE'      :[OlxAPIConst.DG_sDSType     ,'(str) DS ground relay type name'],
                 'Z2OCTYPE'    :[OlxAPIConst.DG_sZ2OCCurve  ,'(str) DS ground zone 2 OC supervision type name'],
                 'CT'          :[OlxAPIConst.DG_dCT         ,'(float) DS ground relay CT ratio'],
@@ -5315,14 +6229,9 @@ OLXOBJ_RLYSET['RLYDSG'] = {\
                 'PACKAGE'     :[OlxAPIConst.DG_nPackage    ,'(int) DS ground relay Package option'],
                 'DELAY'       :[OlxAPIConst.DG_vdDelay     ,'[float]*8 DS ground relay zone delay'],
                 'REARCH'      :[OlxAPIConst.DG_vdReach     ,'[float]*8 DS ground relay zone reach'],
-                'REARCH1'     :[OlxAPIConst.DG_vdReach1    ,'[float]*8 DS ground relay zone reach 1']
-                #'__ParamCount' :[OlxAPIConst.DG_nParamCount ,'(int) DS ground relay parameter count'],
-                #'Param'       :[OlxAPIConst.DG_sParam      ,'(str) DS ground relay setting (1)'],
-                #'__ParamLabels':[OlxAPIConst.DG_vParamLabels,'[variant]*255 DS ground relay setting labels'],
-                #'__Params'     :[OlxAPIConst.DG_vParams     ,'[variant]*255 DS ground relay settings'],
-                #'__ParamsF'    :[OlxAPIConst.DG_vdParams    ,'[float]*ParamCount DS ground relay parameter']
-                }
-OLXOBJ_PARA['RLYDSP'] = {\
+                'REARCH1'     :[OlxAPIConst.DG_vdReach1    ,'[float]*8 DS ground relay zone reach 1']}
+#
+__OLXOBJ_PARA__['RLYDSP'] = {\
                 'ID'          :[OlxAPIConst.DP_sID         ,'(str) DS phase relay ID'],
                 'Z2OCTYPE'    :[OlxAPIConst.DP_sZ2OCCurve  ,'(str) DS ground zone 2 OC supervision type name'],
                 'TYPE'        :[OlxAPIConst.DP_sType       ,'(str) DS phase relay type (ID2)'],
@@ -5332,7 +6241,7 @@ OLXOBJ_PARA['RLYDSP'] = {\
                 'FLAG'        :[OlxAPIConst.DP_nInService  ,'(int) DS phase relay in-service flag: 1- active; 2- out-of-service'],
                 'RLYGROUP'    :[OlxAPIConst.DP_nRlyGrHnd   ,'(RLYGROUP) DS phase relay group']}
 
-OLXOBJ_RLYSET['RLYDSP'] = {\
+__OLXOBJ_RLYSET__['RLYDSP'] = {\
                 'CT'          :[OlxAPIConst.DP_dCT         ,'(float) DS phase relay CT ratio'],
                 'VT'          :[OlxAPIConst.DP_dVT         ,'(float) DS phase relay VT ratio'],
                 'VTBUS'       :[OlxAPIConst.DP_nVTBus      ,'(float) DS phase relay VT at Bus'],
@@ -5345,14 +6254,9 @@ OLXOBJ_RLYSET['RLYDSP'] = {\
                 'OCLIBNAME'   :[OlxAPIConst.DP_sLibrary    ,'(str) DS phase relay Library'],
                 'DELAY'       :[OlxAPIConst.DP_vdDelay     ,'[float]*8 DS phase relay zone delay'],
                 'REACH'       :[OlxAPIConst.DP_vdReach     ,'[float]*8 DS phase relay zone reach'],
-                'REACH1'      :[OlxAPIConst.DP_vdReach1    ,'[float]*8 DS phase relay alternat zone reach']
-                #'ParamCount'  :[OlxAPIConst.DP_nParamCount ,'(int) DS phase relay parameter count'],
-                #'Param'       :[OlxAPIConst.DP_sParam      ,'(str) DS phase relay setting'],
-                #'ParamLabels' :[OlxAPIConst.DP_vParamLabels,'[variant]*255 DS phase relay setting labels'],
-                #'Params'      :[OlxAPIConst.DP_vParams     ,'[variant]*255 DS phase relay settings'],
-                #'ParamsF'     :[OlxAPIConst.DP_vdParams    ,'[float]*ParamCount DS phase relay parameter']
-                }
-OLXOBJ_PARA['RLYD'] = {\
+                'REACH1'      :[OlxAPIConst.DP_vdReach1    ,'[float]*8 DS phase relay alternat zone reach']}
+#
+__OLXOBJ_PARA__['RLYD'] = {\
                 'ID'          :[OlxAPIConst.RD_sID          ,'(str) Differential relay ID (NAME)'],
                 'ASSETID'     :[OlxAPIConst.RD_sAssetID     ,'(str) Differential relay asset ID'],
                 'DATEOFF'     :[OlxAPIConst.RD_sOffDate     ,'(str) Differential relay out of service date'],
@@ -5375,7 +6279,7 @@ OLXOBJ_PARA['RLYD'] = {\
                 'RMTE1'       :[OlxAPIConst.RD_nRmeDevHnd1  ,'(EQUIPMENT) Differential relay remote device 1'],
                 'RMTE2'       :[OlxAPIConst.RD_nRmeDevHnd2  ,'(EQUIPMENT) Differential relay remote device 2']}
 #
-OLXOBJ_PARA['RLYV'] = {\
+__OLXOBJ_PARA__['RLYV'] = {\
                 'ID'        :[OlxAPIConst.RV_sID         ,'(str) Voltage relay ID (NAME)'],
                 'ASSETID'   :[OlxAPIConst.RV_sAssetID    ,'(str) Voltage relay asset ID'],
                 'DATEOFF'   :[OlxAPIConst.RV_sOffDate    ,'(str) Voltage relay out of service date'],
@@ -5395,7 +6299,7 @@ OLXOBJ_PARA['RLYV'] = {\
                 'UVCVR'     :[OlxAPIConst.RV_sUVCurve    ,'(str) Voltage relay under-voltage element curve'],
                 'RLYGROUP'  :[OlxAPIConst.RV_nRlyGrpHnd  ,'(RLYGROUP) Voltage relay group']}
 #
-OLXOBJ_PARA['RECLSR'] = {\
+__OLXOBJ_PARA__['RECLSR'] = {\
                 'ID'          :[OlxAPIConst.CP_sID         ,'(str) Recloser ID'],
                 'ASSETID'     :[OlxAPIConst.CP_sAssetID    ,'(str) Recloser AssetID'],
                 'DATEOFF'     :[OlxAPIConst.CP_sOffDate    ,'(str) Recloser out of service date'],
@@ -5425,7 +6329,7 @@ OLXOBJ_PARA['RECLSR'] = {\
                 'FASTTYPE'    :[OlxAPIConst.CP_sTypeFast   ,OlxAPIConst.CG_sTypeFast   ,'(str) Recloser-Phase fast curve','(str) Recloser-Ground fast curve'],
                 'SLOWTYPE'    :[OlxAPIConst.CP_sTypeSlow   ,OlxAPIConst.CG_sTypeSlow   ,'(str) Recloser-Phase slow curve','(str) Recloser-Ground slow curve']}
 #
-OLXOBJ_PARA['SCHEME'] = {\
+__OLXOBJ_PARA__['SCHEME'] = {\
                 'FLAG'        :[OlxAPIConst.LS_nInService ,'(int) Logic scheme in-service flag: 1- active; 2- out-of-service'],
                 'SIGNALONLY'  :[OlxAPIConst.LS_nSignalOnly,'(int) Logic scheme signal only'],
                 'ASSETID'     :[OlxAPIConst.LS_sAssetID   ,'(str) Logic scheme asset ID'],
@@ -5436,10 +6340,10 @@ OLXOBJ_PARA['SCHEME'] = {\
                 'NAME'        :[OlxAPIConst.LS_sScheme    ,'(str) Logic scheme name'],
                 'PL_LOGICTERM':[OlxAPIConst.LS_sVariables ,'(str) Logic scheme variables details (one variable per line in the format: name=description)'],
                 'RLYGROUP'    :[OlxAPIConst.LS_nRlyGrpHnd ,'(RLYGROUP) Logic scheme relay group']}
-OLXOBJ_PARA['ZCORRECT'] = {}
-OLXOBJ_PARA['AREA'] = {}
-OLXOBJ_PARA['ZONE'] = {}
-OLXOBJ_PARA['FT'] = {\
+__OLXOBJ_PARA__['ZCORRECT'] = {}
+__OLXOBJ_PARA__['AREA'] = {}
+__OLXOBJ_PARA__['ZONE'] = {}
+__OLXOBJ_PARA__['FT'] = {\
                 'Mva'         :[OlxAPIConst.FT_dMVA     ,'(float) Fault MVA'],
                 'RNt'         :[OlxAPIConst.FT_dRNt     ,'(float) Thevenin equivalent negative sequence resistance'],
                 'RPt'         :[OlxAPIConst.FT_dRPt     ,'(float) Thevenin equivalent positive sequence resistance'],
@@ -5453,9 +6357,23 @@ OLXOBJ_PARA['FT'] = {\
                 'Xt'          :[OlxAPIConst.FT_dXt      ,'(float) '], # #
                 'Nofaults'    :[OlxAPIConst.FT_nNOfaults,'(int) ']} # #
 #
-OLXOBJ_oHND = {'BUS','BUS1','BUS2','BUS3','CNTBS','LTCCTRL','VTBUS','RLYGROUP','RLYGROUP1','RLYGROUP2','RLYGROUP3',
+__OLXOBJ_oHND__ = {'BUS','BUS1','BUS2','BUS3','CNTBUS','LTCCTRL','VTBUS','RLYGROUP','RLYGROUP1','RLYGROUP2','RLYGROUP3',
                'CTGRP1','LOAD','SHUNT','GEN','LINE1','LINE2','EQUIPMENT','MULINE','PRIMARY','BACKUP','LOGICTRIP',
-               'LOGICRECL', 'OBJLST1','OBJLST2','G1DEVS','G2DEVS','G1OUTAGES','G2OUTAGES','RMTE1','RMTE2'}
+               'LOGICRECL','OBJLST1','OBJLST2','G1DEVS','G2DEVS','G1OUTAGES','G2OUTAGES','RMTE1','RMTE2'}
+__OLXOBJ_fltConn__ = ['3LG','2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA',\
+                 '1LG:A','1LG:B','1LG:C','LL:BC','LL:CA','LL:AB','LL:CB','LL:AC','LL:BA']
+__OLXOBJ_fltConnSEA__ = {'3LG':1,\
+                '2LG:BC':2,'2LG:CA':3,'2LG:AB':4,'2LG:CB':2,'2LG:AC':3,'2LG:BA':4,\
+                '1LG:A':5,'1LG:B':6,'1LG:C':7,\
+                'LL:BC':8,'LL:CA':9 ,'LL:AB':10,'LL:CB':8,'LL:AC':9 ,'LL:BA':10}
+__OLXOBJ_fltConnCLS__ ={'3LG':[0,1],\
+               '2LG:BC':[1,1],'2LG:CA':[1,2],'2LG:AB':[1,3],'2LG:CB':[1,1],'2LG:AC':[1,2],'2LG:BA':[1,3],\
+               '1LG:A':[2,1] ,'1LG:B':[2,2] ,'1LG:C':[2,3],\
+               'LL:BC':[3,1] ,'LL:CA':[3,2] ,'LL:AB':[3,3] ,'LL:CB':[3,1] ,'LL:AC':[3,2] ,'LL:BA':[3,3]}
+__OLXOBJ_fltConnSIM__ = {'3LG':[0,0],\
+               '2LG:BC':[1,1],'2LG:CA':[1,2],'2LG:AB':[1,0],'2LG:CB':[1,1],'2LG:AC':[1,2],'2LG:BA':[1,0],\
+               '1LG:A':[2,0] ,'1LG:B':[2,1] ,'1LG:C':[2,2],\
+               'LL:BC':[3,1] ,'LL:CA':[3,2] ,'LL:AB':[3,0] ,'LL:CB':[3,1] ,'LL:AC':[3,2] ,'LL:BA':[3,0]}
 #
 def __getEquipment__(sType,scope=None):
     """
@@ -5471,12 +6389,12 @@ def __getEquipment__(sType,scope=None):
         return res
     #
     try:
-        tc = OLXOBJ_CONST[sType][0]
+        tc = __OLXOBJ_CONST__[sType][0]
     except:
-        s1 = '\nString parameter available for __getEquipment__(str):\n'
-        s1 += str(OLXOBJ_LIST) +'\n'
-        s1 += "\nNot found: '%s'"%sType
-        raise Exception(s1)
+        se = '\nString parameter available for __getEquipment__(str):\n'
+        se += str(__OLXOBJ_LIST__) +'\n'
+        se += "\nNot found: '%s'"%sType
+        raise Exception(se)
     #
     res = []
     hnd = c_int(0)
@@ -5499,10 +6417,10 @@ def __getBusEquipment__(bus, sType):
             res.extend(__getBusEquipment__(bus,sType1))
         return res
     #
-    if sType not in OLXOBJ_BUS:
-        s1 = '\nString parameter available for __getBusEquipment__(bus,sType):\n'
-        s1 += "\nNot found: '%s'"%sType
-        raise Exception(s1)
+    if sType not in __OLXOBJ_BUS__:
+        se = '\nString parameter available for __getBusEquipment__(bus,sType):\n'
+        se += "\nNot found: '%s'"%sType
+        raise Exception(se)
     #
     __check_currFileIdx__(bus)
     hnd = bus.__hnd__
@@ -5520,8 +6438,8 @@ def __getBusEquipment__(bus, sType):
                 res.append(rg1)
         return res
     #
-    tc = OLXOBJ_CONST[sType][0]
-    if sType in OLXOBJ_EQUIPMENT :
+    tc = __OLXOBJ_CONST__[sType][0]
+    if sType in __OLXOBJ_EQUIPMENT__ :
         while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(OlxAPIConst.TC_BRANCH),byref(val1)):
             e1 = __getDatai__(val1.value,OlxAPIConst.BR_nHandle)
             tc1 = OlxAPI.EquipmentType(e1)
@@ -5533,8 +6451,49 @@ def __getBusEquipment__(bus, sType):
         while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(tc),byref(val1)):
             o1 = __getOBJ__(val1.value,tc=tc)
             res.append(o1)
-            if sType in OLXOBJ_BUS1:
+            if sType in __OLXOBJ_BUS1__:
                 break
+    return res
+#
+def __getBusEquipmentHnd__(bus, sType):
+    """
+    Retrieves all equipment hnd of a given type sType that is attached to bus
+    - bus : BUS
+    - sType : in __OLXOBJ_BUS__
+    """
+    if sType not in __OLXOBJ_BUS__:
+        se = '\nString parameter available for __getBusEquipmentHnd__(bus,sType):\n'
+        se += "\nNot found: '%s'"%sType
+        raise Exception(se)
+    #
+    res = []
+    if type(bus)==BUS:
+        hnd = bus.__hnd__
+        __check_currFileIdx__(bus)
+    else:
+        hnd = bus
+    val1,val2 = c_int(0), c_int(0)
+    if sType=='TERMINAL':
+        while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(OlxAPIConst.TC_BRANCH),byref(val1)):
+            res.append(val1.value)
+    #
+    elif sType=='RLYGROUP':
+        while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(OlxAPIConst.TC_BRANCH),byref(val1)):
+            if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(val1.value,c_int(OlxAPIConst.BR_nRlyGrp1Hnd),byref(val2)):
+                res.append(val2.value)
+    else:
+        tc = __OLXOBJ_CONST__[sType][0]
+        if sType in __OLXOBJ_EQUIPMENT__ :
+            while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(OlxAPIConst.TC_BRANCH),byref(val1)):
+                e1 = __getDatai__(val1.value,OlxAPIConst.BR_nHandle)
+                tc1 = OlxAPI.EquipmentType(e1)
+                if tc1==tc:
+                    res.append(e1)
+        else:
+            while OlxAPIConst.OLXAPI_OK==OlxAPI.GetBusEquipment(hnd,c_int(tc),byref(val1)):
+                res.append(val1.value)
+                if sType in __OLXOBJ_BUS1__:
+                    break
     return res
 #
 def __getDatai__(hnd,paraCode):
@@ -5656,7 +6615,7 @@ def __getOBJ__(hnd,tc=None,sPara=None):
             raise Exception('error TC:'+str(tc))
     else:
         if type(sPara)!=list:
-            if sPara not in OLXOBJ_oHND and sPara!=None :
+            if sPara not in __OLXOBJ_oHND__ and sPara!=None :
                 return hnd
             #
             if type(hnd)!=list:
@@ -5704,77 +6663,84 @@ def __setValue__(hnd,paraCode,value):
     #
     raise OlxAPI.OlxAPIException("Error of paraCode")
 #
+def __getValue_i__(buf,count,stop=False):
+    array = []
+    val = cast(buf, POINTER(c_int*count)).contents
+    for ii in range(count):
+        array.append(val[ii])
+        if stop and val[ii] ==0:
+            break
+    return array
+#
 def __getValue__(hnd,tokenV,buf):
-    """Convert GetData binary data buffer into Python object of correct type
-    buf,tokenV,hnd
-    """
+    """ Convert GetData binary data buffer into Python object of correct type """
     vt = tokenV//100
     if vt == OlxAPIConst.VT_STRING:
         return OlxAPI.decode(buf.value)
     elif vt in [OlxAPIConst.VT_DOUBLE,OlxAPIConst.VT_INTEGER]:
         return buf.value
+    #
+    array = []
+    tc = OlxAPI.EquipmentType(hnd)
+    if tc == OlxAPIConst.TC_BREAKER and tokenV in {OlxAPIConst.BK_vnG1DevHnd,OlxAPIConst.BK_vnG2DevHnd,OlxAPIConst.BK_vnG1OutageHnd,OlxAPIConst.BK_vnG2OutageHnd}:
+        count = OlxAPIConst.MXSBKF
+        return __getValue_i__(buf,count,True)
+    #
+    if tc == OlxAPIConst.TC_SVD and tokenV == OlxAPIConst.SV_vnNoStep:
+        count = 8
+        return __getValue_i__(buf,count)
+    #
+    if tc in {OlxAPIConst.TC_RLYDSP,OlxAPIConst.TC_RLYDSG} and tokenV in {OlxAPIConst.DP_vParams,OlxAPIConst.DP_vParamLabels}:
+        # String with tab delimited fields
+        return ((cast(buf, c_char_p).value).decode("UTF-8")).split("\t")
+    if tc == OlxAPIConst.TC_DCLINE2 and tokenV==OlxAPIConst.DC_vnBridges:
+        count = 2
+        return __getValue_i__(buf,count)
+    #
+    if tc == OlxAPIConst.TC_GENUNIT and tokenV in {OlxAPIConst.GU_vdR,OlxAPIConst.GU_vdX}:
+        count = 5
+    elif tc == OlxAPIConst.TC_LOADUNIT and tokenV in {OlxAPIConst.LU_vdMW,OlxAPIConst.LU_vdMVAR}:
+        count = 3
+    elif tc == OlxAPIConst.TC_SVD and tokenV in {OlxAPIConst.SV_vdBinc,OlxAPIConst.SV_vdB0inc}:
+        count = 8
+    elif tc == OlxAPIConst.TC_LINE and tokenV == OlxAPIConst.LN_vdRating:
+        count = 4
+    elif tc == OlxAPIConst.TC_RLYGROUP and tokenV == OlxAPIConst.RG_vdRecloseInt:
+        count = 4
+    elif tc == OlxAPIConst.TC_RLYOCG and tokenV == OlxAPIConst.OG_vdDirSetting:
+        count = 8
+    elif tc == OlxAPIConst.TC_RLYOCG and tokenV == OlxAPIConst.OG_vdDirSettingV15:
+        count = 9
+    elif tc == OlxAPIConst.TC_RLYOCG and tokenV in {OlxAPIConst.OG_vdDTPickup,OlxAPIConst.OG_vdDTDelay}:
+        count = 5
+    elif tc == OlxAPIConst.TC_RLYOCP and tokenV == OlxAPIConst.OP_vdDirSetting:
+        count = 8
+    elif tc == OlxAPIConst.TC_RLYOCP and tokenV == OlxAPIConst.OP_vdDirSettingV15:
+        count = 9
+    elif tc == OlxAPIConst.TC_RLYOCP and tokenV in {OlxAPIConst.OP_vdDTPickup,OlxAPIConst.OP_vdDTDelay}:
+        count = 5
+    elif tc == OlxAPIConst.TC_RLYDSG and tokenV == OlxAPIConst.DG_vdParams:
+        count = OlxAPIConst.MXDSPARAMS
+    elif tc == OlxAPIConst.TC_RLYDSG and tokenV in {OlxAPIConst.DG_vdDelay,OlxAPIConst.DG_vdReach,OlxAPIConst.DG_vdReach1}:
+        count = OlxAPIConst.MXZONE
+    elif tc == OlxAPIConst.TC_RLYDSP and tokenV == OlxAPIConst.DP_vParams:
+        count = OlxAPIConst.MXDSPARAMS
+    elif tc == OlxAPIConst.TC_RLYDSP and tokenV in {OlxAPIConst.DP_vdDelay,OlxAPIConst.DP_vdReach,OlxAPIConst.DP_vdReach1}:
+        count = OlxAPIConst.MXZONE
+    elif tc == OlxAPIConst.TC_CCGEN and tokenV in {OlxAPIConst.CC_vdV,OlxAPIConst.CC_vdI,OlxAPIConst.CC_vdAng}:
+        count = OlxAPIConst.MAXCCV
+    elif tc == OlxAPIConst.TC_BREAKER and tokenV in {OlxAPIConst.BK_vdRecloseInt1,OlxAPIConst.BK_vdRecloseInt2}:
+        count = 3
+    elif tc == OlxAPIConst.TC_MU and tokenV in [OlxAPIConst.MU_vdX,OlxAPIConst.MU_vdR,OlxAPIConst.MU_vdFrom1,OlxAPIConst.MU_vdFrom2,OlxAPIConst.MU_vdTo1,OlxAPIConst.MU_vdTo2]:
+        count = 5
+    elif tc == OlxAPIConst.TC_DCLINE2:# and tokenV in {OlxAPIConst.DC_vdAngleMax,OlxAPIConst.DC_vdAngleMin}:
+        count = 2
     else:
-        array = []
-        tc = OlxAPI.EquipmentType(hnd)
-        if tc == OlxAPIConst.TC_BREAKER and tokenV in {OlxAPIConst.BK_vnG1DevHnd,OlxAPIConst.BK_vnG2DevHnd,OlxAPIConst.BK_vnG1OutageHnd,OlxAPIConst.BK_vnG2OutageHnd}:
-            val = cast(buf, POINTER(c_int*OlxAPIConst.MXSBKF)).contents  # int array of size MXSBKF
-            for ii in range(0,OlxAPIConst.MXSBKF-1):
-                array.append(val[ii])
-                if array[ii] == 0:
-                    break
-        #
-        elif tc == OlxAPIConst.TC_SVD and tokenV == OlxAPIConst.SV_vnNoStep:
-            val = cast(buf, POINTER(c_int*8)).contents  # int array of size 8
-            for ii in range(8):
-                array.append(val[ii])
-        elif (tc == OlxAPIConst.TC_RLYDSP and tokenV in [OlxAPIConst.DP_vParams,OlxAPIConst.DP_vParamLabels]) or \
-             (tc == OlxAPIConst.TC_RLYDSG and tokenV in [OlxAPIConst.DG_vParams,OlxAPIConst.DG_vParamLabels]):
-            # String with tab delimited fields
-            return ((cast(buf, c_char_p).value).decode("UTF-8")).split("\t")
-        #
-        else:
-            if tc == OlxAPIConst.TC_GENUNIT and tokenV in [OlxAPIConst.GU_vdR,OlxAPIConst.GU_vdX]:
-                count = 5
-            elif tc == OlxAPIConst.TC_LOADUNIT and tokenV in [OlxAPIConst.LU_vdMW,OlxAPIConst.LU_vdMVAR] :
-                count = 3
-            elif tc == OlxAPIConst.TC_SVD and tokenV in [OlxAPIConst.SV_vdBinc,OlxAPIConst.SV_vdB0inc]:
-                count = 8
-            elif tc == OlxAPIConst.TC_LINE and tokenV == OlxAPIConst.LN_vdRating:
-                count = 4
-            elif tc == OlxAPIConst.TC_RLYGROUP and tokenV == OlxAPIConst.RG_vdRecloseInt:
-                count = 4
-            elif tc == OlxAPIConst.TC_RLYOCG and tokenV == OlxAPIConst.OG_vdDirSetting:
-                count = 8
-            elif tc == OlxAPIConst.TC_RLYOCG and tokenV == OlxAPIConst.OG_vdDirSettingV15:
-                count = 9
-            elif tc == OlxAPIConst.TC_RLYOCG and tokenV in [OlxAPIConst.OG_vdDTPickup,OlxAPIConst.OG_vdDTDelay]:
-                count = 5
-            elif tc == OlxAPIConst.TC_RLYOCP and tokenV == OlxAPIConst.OP_vdDirSetting:
-                count = 8
-            elif tc == OlxAPIConst.TC_RLYOCP and tokenV == OlxAPIConst.OP_vdDirSettingV15:
-                count = 9
-            elif tc == OlxAPIConst.TC_RLYOCP and tokenV in [OlxAPIConst.OP_vdDTPickup,OlxAPIConst.OP_vdDTDelay]:
-                count = 5
-            elif tc == OlxAPIConst.TC_RLYDSG and tokenV == OlxAPIConst.DG_vdParams:
-                count = OlxAPIConst.MXDSPARAMS
-            elif tc == OlxAPIConst.TC_RLYDSG and tokenV in [OlxAPIConst.DG_vdDelay,OlxAPIConst.DG_vdReach,OlxAPIConst.DG_vdReach1]:
-                count = OlxAPIConst.MXZONE
-            elif tc == OlxAPIConst.TC_RLYDSP and tokenV == OlxAPIConst.DP_vParams:
-                count = OlxAPIConst.MXDSPARAMS
-            elif tc == OlxAPIConst.TC_RLYDSP and tokenV in[OlxAPIConst.DP_vdDelay,OlxAPIConst.DP_vdReach,OlxAPIConst.DP_vdReach1]:
-                count = OlxAPIConst.MXZONE
-            elif tc == OlxAPIConst.TC_CCGEN and tokenV in [OlxAPIConst.CC_vdV,OlxAPIConst.CC_vdI,OlxAPIConst.CC_vdAng]:
-                count = OlxAPIConst.MAXCCV
-            elif tc == OlxAPIConst.TC_BREAKER and tokenV in [OlxAPIConst.BK_vdRecloseInt1,OlxAPIConst.BK_vdRecloseInt2]:
-                count = 3
-            elif tc == OlxAPIConst.TC_MU and tokenV in [OlxAPIConst.MU_vdX,OlxAPIConst.MU_vdR,OlxAPIConst.MU_vdFrom1,OlxAPIConst.MU_vdFrom2,OlxAPIConst.MU_vdTo1,OlxAPIConst.MU_vdTo2]:
-                count = 5
-            else:
-                count = OlxAPIConst.MXDSPARAMS
-            val = cast(buf, POINTER(c_double*count)).contents  # double array of size count
-            for v in val:
-                array.append(v)
-        return array
+        count = OlxAPIConst.MXDSPARAMS
+    val = cast(buf, POINTER(c_double*count)).contents  # double array of size count
+    for v in val:
+        array.append(v)
+    return array
 #
 def __findObjHnd__(val1,typ):
     if type(val1)==typ:
@@ -5789,7 +6755,7 @@ def __findObjHnd__(val1,typ):
     return 0
 #
 def __findTerminalHnd__(b1,b2,sType,CID):
-    if type(b1)!=BUS or type(b2)!=BUS or type(sType)!=str or sType not in OLXOBJ_EQUIPMENT or type(CID)!=str:
+    if type(b1)!=BUS or type(b2)!=BUS or type(sType)!=str or sType not in __OLXOBJ_EQUIPMENT__ or type(CID)!=str:
         return 0
     #
     __check_currFileIdx__(b1)
@@ -5809,7 +6775,7 @@ def __findTerminalHnd__(b1,b2,sType,CID):
     return 0
 #
 def __findBr2Hnd__(type1,val1,val2,val3):
-    if type1 not in OLXOBJ_EQUIPMENT:
+    if type1 not in __OLXOBJ_EQUIPMENT__:
         return 0
     if type(val1)==BUS and type(val2)==BUS and type(val3)==str:
         b1,b2,sid = val1,val2,val3
@@ -5906,36 +6872,42 @@ def __checkArgs1__(sf,val1,val2):
         raise ValueError(se)
 #
 def __initFailCheck__(hnd,sType,vala):
-    if hnd==0 or OlxAPI.EquipmentType(hnd)!=OLXOBJ_CONST[sType][0]:
+    if hnd==0 or OlxAPI.EquipmentType(hnd)!=__OLXOBJ_CONST__[sType][0]:
         __check_currFileIdx1__()
-        s1 = '\n'+ sType +'('
+        se = '\n'+ sType +'('
         for v1 in vala:
             if v1!=None:
                 if type(v1)==str:
-                    s1 +='"'+v1 +'" , '
+                    se +='"'+v1 +'" , '
                 elif type(v1)==BUS:
                     if v1.__hnd__>0:
-                        s1 += v1.toString()+' , '
+                        se += v1.toString()+' , '
                     else:
-                        s1 += 'BUS NOT FOUND,'
+                        se += 'BUS NOT FOUND,'
                 else:
-                    s1 +=str(v1) +' , '
+                    se +=str(v1) +' , '
         #
-        if s1.endswith('('):
-            s1 += ') missing required argument'
+        if se.endswith('('):
+            se += ') missing required argument'
         else:
-            if s1.endswith(' , '):
-                s1 = s1[:-3]
-            s1 += '): NOT FOUND'
-        raise Exception(s1)
+            if se.endswith(' , '):
+                se = se[:-3]
+            se += '): NOT FOUND'
+        raise Exception(se)
 #
 def __initFail2__(sType,hnd):
     __check_currFileIdx1__()
-    s1 = '\n'+ sType +'(hnd='+str(hnd) +'): NOT FOUND'
-    raise Exception(s1)
+    se = '\n'+ sType +'(hnd='+str(hnd) +'): NOT FOUND'
+    raise Exception(se)
+#
+def __oldinit214__(so):
+    """not support .init, internal usage"""
+    se= '\nThe %s.init(..) can no longer be used by the OlxObj module version 2.1.4 or above.'%so
+    se+='\nYou must use OLCase.find%s(...) instead.'%so
+    raise Exception(se)
 #
 def __getTERMINAL_OBJ__(ob, sType):
-    __check_currFileIdx__(ob)     
+    __check_currFileIdx__(ob)
     hnd = ob.__hnd__
     if sType=='BUS':
         res = []
@@ -5954,14 +6926,8 @@ def __getTERMINAL_OBJ__(ob, sType):
         return __getOBJ__(e1,tc1)
     if sType=='RLYGROUP':
         res = []
-        r1 = __getDatai__(hnd,OlxAPIConst.BR_nRlyGrp1Hnd)
-        try:
-            res.append( RLYGROUP(hnd=r1) )
-        except:
-            res.append(None)
-        ha,_,_,_ = OlxAPILib.getRemoteTerminals(hnd,[])
-        for h1 in ha:
-            r1= __getDatai__(h1,OlxAPIConst.BR_nRlyGrp1Hnd)
+        for c1 in [OlxAPIConst.BR_nRlyGrp1Hnd,OlxAPIConst.BR_nRlyGrp2Hnd,OlxAPIConst.BR_nRlyGrp3Hnd]:
+            r1 = __getDatai__(hnd,c1)
             try:
                 res.append( RLYGROUP(hnd=r1) )
             except:
@@ -5979,11 +6945,79 @@ def __getTERMINAL_OBJ__(ob, sType):
         """All taps are ignored.
              Close switches are included
              Out of service branches are ignored"""
-        ba,_,_,_ = OlxAPILib.getRemoteTerminals(hnd,[])
+        #import OlxAPILib
+        #ba,_,_,_ = OlxAPILib.getRemoteTerminals(hnd,[])
+        ba = __getRemoteTerminals__(hnd)
         res = []
         for b1 in ba:
             res.append(TERMINAL(hnd=b1))
         return res
+#
+def __getRemoteTerminals__(hnd0):
+    """ Purpose: Find all remote end of a branch
+             All taps are ignored.
+             Close switches are included
+             Out of service branches are ignored
+             if branch located on tapbus => return [] } """
+    st0 = __getDatai__(hnd0,OlxAPIConst.BR_nInService)
+    if st0==2: # br out of service
+        return []
+    b1 = __getDatai__(hnd0,OlxAPIConst.BR_nBus1Hnd) # bus1 of br
+    tap1 = __getDatai__(b1,OlxAPIConst.BUS_nTapBus)
+    if tap1!=0: # br located on tapbus
+        return []
+    ty0 = __getDatai__(hnd0,OlxAPIConst.BR_nType)
+    e0 = __getDatai__(hnd0,OlxAPIConst.BR_nHandle)
+    if ty0==OlxAPIConst.TC_SWITCH:
+        sw0 = __getDatai__(e0,OlxAPIConst.SW_nStatus)
+        if sw0 ==0: # switch open
+            return []
+    #
+    res = []
+    setBus = {b1}
+    setEqui = {e0}
+    #
+    h2 = __getDatai__(hnd0,OlxAPIConst.BR_nBus2Hnd)
+    h3 = __getDatai__(hnd0,OlxAPIConst.BR_nBus3Hnd)
+    b23 = {h2}
+    if h3 is not None:
+        b23.add(h3)
+    #
+    while True:
+        b23in = set()
+        setBus.update(b23)
+        for b2 in b23:
+            nTap = __getDatai__(b2,OlxAPIConst.BUS_nTapBus)
+            if nTap==0:# finish
+                bra = __getBusEquipmentHnd__(b2,'TERMINAL')
+                for br1 in bra:
+                    e1 = __getDatai__(br1,OlxAPIConst.BR_nHandle)
+                    if e1 in setEqui:
+                        res.append(br1)
+            else: # continue
+                bra = __getBusEquipmentHnd__(b2,'TERMINAL')
+                for br1 in bra:
+                    st1 = __getDatai__(br1,OlxAPIConst.BR_nInService)
+                    if st1!=2: # in service branch
+                        e1 = __getDatai__(br1,OlxAPIConst.BR_nHandle)
+                        ty1 = __getDatai__(br1,OlxAPIConst.BR_nType)
+                        stw = 7
+                        if ty1==OlxAPIConst.TC_SWITCH:
+                            stw = __getDatai__(e1,OlxAPIConst.SW_nStatus)
+                        if stw >0 and e1 not in setEqui:
+                            setEqui.add(e1)
+                            h2i = __getDatai__(br1,OlxAPIConst.BR_nBus2Hnd)
+                            h3i = __getDatai__(br1,OlxAPIConst.BR_nBus3Hnd)
+                            if h2i not in setBus:
+                                b23in.add(h2i)
+                            if h3i is not None and h3i not in setBus:
+                                b23in.add(h3i)
+        #
+        if len(b23in)==0:
+            break
+        b23.clear()
+        b23.update(b23in)
+    return res
 #
 def __get_OBJTERMINAL__(ob):
     """ return list TERMINAL of Object"""
@@ -6000,35 +7034,48 @@ def __getRLYGROUP_OBJ__(rg, sType):
     - rg : RLYGROUP
     - sType : OLXOBJ_RELAY+BUS
     """
-    val1,val2 = c_int(0),c_int(0)
     __check_currFileIdx__(rg)
+    val1,val2 = c_int(0),c_int(0)
     hnd = rg.__hnd__
+    res = []
     if sType=='BUS':
         if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(hnd,c_int(OlxAPIConst.RG_nBranchHnd),byref(val1)):
-            res = []
             if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(val1.value,c_int(OlxAPIConst.BR_nBus1Hnd),byref(val2)):
-                res.append(BUS(hnd=val2.value))
+                res.append(val2.value)
             else:
                 raise Exception('\nBRANCH not found for :'+rg.toString())
             if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(val1.value,c_int(OlxAPIConst.BR_nBus2Hnd),byref(val2)):
-                res.append(BUS(hnd=val2.value))
+                res.append(val2.value)
             if OlxAPIConst.OLXAPI_OK==OlxAPI.GetData(val1.value, c_int(OlxAPIConst.BR_nBus3Hnd),byref(val2)):
-                res.append(BUS(hnd=val2.value))
-            return res
-        raise Exception('\nBRANCH not found for :'+rg.toString())
-    #
+                res.append(val2.value)
+        else:
+            raise Exception('\nBRANCH not found for :'+rg.toString())
+    else:
+        while OlxAPIConst.OLXAPI_OK==OlxAPI.GetRelay(hnd,byref(val1)):
+            tc1 = OlxAPI.EquipmentType(val1.value)
+            if type(sType)in {list,set}:
+                for sType1 in sType:
+                    if tc1 == __OLXOBJ_CONST__[sType1][0]:
+                        res.append(val1.value)
+            else:
+                if tc1 == __OLXOBJ_CONST__[sType][0]:
+                    res.append(val1.value)
+    return res
+#
+def __getRLYGROUP_RLY__(rg):
+    """
+    Retrieves all RELAY object that is attached to RLYGROUP
+    - rg : RLYGROUP
+    """
+    val1 = c_int(0)
+    __check_currFileIdx__(rg)
+    hnd = rg.__hnd__
     res = []
     while OlxAPIConst.OLXAPI_OK==OlxAPI.GetRelay(hnd,byref(val1)):
         tc1 = OlxAPI.EquipmentType(val1.value)
-        if type(sType)in {list,set}:
-            for sType1 in sType:
-                if tc1 == OLXOBJ_CONST[sType1][0]:
-                    r1 = __getOBJ__(val1.value,tc1)
-                    res.append(r1)
-        else:
-            if tc1 == OLXOBJ_CONST[sType][0]:
-                r1 = __getOBJ__(val1.value,tc1)
-                res.append(r1)
+        if tc1!=OlxAPIConst.TC_RECLSRG:
+            r1 = __getOBJ__(val1.value,tc1)
+            res.append(r1)
     return res
 #
 def __changeRLYSetting__(rl,sPara,value):
@@ -6037,10 +7084,10 @@ def __changeRLYSetting__(rl,sPara,value):
         raise AttributeError("changeSetting() method work only with relay type 'RLYOCG','RLYOCP','RLYDSG','RLYDSP'")
     #
     if type(sPara)!=str :
-        s1 = "\nin call %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
-        s1+= "\n\ttype(sPara): str"
-        s1+= "\n\tfound      : "+type(sPara).__name__
-        raise TypeError(s1)
+        se = "\nin call %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
+        se+= "\n\ttype(sPara): str"
+        se+= "\n\tfound      : "+type(sPara).__name__
+        raise TypeError(se)
     if type(rl) in {RLYOCG,RLYOCP}:
         __changeRLYSettingOC__(rl,sPara,value)
     else:
@@ -6048,32 +7095,32 @@ def __changeRLYSetting__(rl,sPara,value):
 #
 def __changeRLYSettingOC__(rl,sPara,value):
     #
-    if sPara not in OLXOBJ_RLYSET[type(rl).__name__].keys():
+    if sPara not in __OLXOBJ_RLYSET__[type(rl).__name__].keys():
         polar = __getRelaySetting__(rl,'POLAR')
         __errorParaSettingOC__(rl,polar,sPara,'changeSetting',value)
     #
-    paraCode = OLXOBJ_RLYSET[type(rl).__name__][sPara]
+    paraCode = __OLXOBJ_RLYSET__[type(rl).__name__][sPara]
     if len(paraCode) ==2:
         t0 = __getTypeParaCode__(paraCode[0])
         if (t0 != type(value)) and not (t0==float and type(value)==int):
-            s1 = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
-            s1+= "\n\ttype(value) required : %s"%t0.__name__
-            s1+= "\n\tfound                : "+type(value).__name__
-            raise TypeError(s1)
+            se = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
+            se+= "\n\ttype(value) required : %s"%t0.__name__
+            se+= "\n\tfound                : "+type(value).__name__
+            raise TypeError(se)
         #
         val1 = __setValue__(rl.__hnd__,paraCode[0],value)
         if OlxAPIConst.OLXAPI_OK==OlxAPI.SetData(c_int(rl.__hnd__),c_int(paraCode[0]),byref(val1)):
             return
-        s1 = "\nWrite Access = NO %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
-        raise Exception(s1)
+        se = "\nWrite Access = NO %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
+        raise Exception(se)
     else:
         polar = __getRelaySetting__(rl,'POLAR')
         if polar in paraCode[1]:
             if type(value).__name__ not in {'int','float'}:
-                s1 = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
-                s1+= "\n\ttype(value) required : float"
-                s1+= "\n\tfound                : "+type(value).__name__
-                raise TypeError(s1)
+                se = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
+                se+= "\n\ttype(value) required : float"
+                se+= "\n\tfound                : "+type(value).__name__
+                raise TypeError(se)
             #
             id1 = paraCode[2]
             valo = [0]*8
@@ -6082,28 +7129,28 @@ def __changeRLYSettingOC__(rl,sPara,value):
             val1 = __setValue__(rl.__hnd__,paraCode[0],valo)
             if OlxAPIConst.OLXAPI_OK==OlxAPI.SetData(c_int(rl.__hnd__),c_int(0x10000*(id1+1)+paraCode[0]), byref(val1)):
                 return
-            s1 = "\nWrite Access = NO %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
-            raise Exception(s1)
+            se = "\nWrite Access = NO %s.changeSetting(sPara=%s,val=%s) "%(type(rl).__name__,str(sPara), str(value))
+            raise Exception(se)
         else:
             __errorParaSettingOC__(rl,polar,sPara,'changeSetting',value)
     return
 #
 def __changeRLYSettingDS__(rl,sPara,value):
-    if sPara in OLXOBJ_RLYSET[type(rl).__name__].keys():
-        paraCode = OLXOBJ_RLYSET[type(rl).__name__][sPara][0]
+    if sPara in __OLXOBJ_RLYSET__[type(rl).__name__].keys():
+        paraCode = __OLXOBJ_RLYSET__[type(rl).__name__][sPara][0]
         t0 = __getTypeParaCode__(paraCode)
         #
         if (t0 != type(value)) and not (t0==float and type(value)==int):
-            s1 = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
-            s1+= "\n\ttype(value) required : %s"%t0.__name__
-            s1+= "\n\tfound                : "+type(value).__name__
-            raise TypeError(s1)
+            se = "\nin call %s.changeSetting('%s',value)"%(type(rl).__name__,sPara)
+            se+= "\n\ttype(value) required : %s"%t0.__name__
+            se+= "\n\tfound                : "+type(value).__name__
+            raise TypeError(se)
         #
         val1 = __setValue__(rl.__hnd__,paraCode,value)
         if OlxAPIConst.OLXAPI_OK == OlxAPI.SetData( c_int(rl.__hnd__), c_int(paraCode), byref(val1) ):
             return
-        s1 = "\nWrite Access = NO with %s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
-        raise Exception(s1)
+        se = "\nWrite Access = NO with %s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
+        raise Exception(se)
     #
     if type(rl)==RLYDSG:
         nC = __getDatai__(rl.__hnd__,OlxAPIConst.DG_nParamCount)
@@ -6117,59 +7164,55 @@ def __changeRLYSettingDS__(rl,sPara,value):
         val = c_char_p(vs.encode('UTF-8'))
         if OlxAPIConst.OLXAPI_OK == OlxAPI.SetData(c_int(rl.__hnd__),c_int(OlxAPIConst.DG_sParam),byref(val)):
             return
-        s1 = "\nWrite Access = NO with %s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
-        raise Exception(s1)
+        se = "\nWrite Access = NO with %s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
+        raise Exception(se)
     # Error
-    s1 = '\nAll Setting for %s : '%(type(rl).__name__) + rl.toString()
-    for a1,val in OLXOBJ_RLYSET[type(rl).__name__].items():
-        s1+= '\n' + a1.ljust(15)+' : '+ val[1]
+    se = '\nAll Setting for %s : '%(type(rl).__name__) + rl.toString()
+    for a1,val in __OLXOBJ_RLYSET__[type(rl).__name__].items():
+        se+= '\n' + a1.ljust(15)+' : '+ val[1]
     for i in range(nC):
-        s1+= '\n' + label[i].ljust(15)
+        se+= '\n' + label[i].ljust(15)
     #
-    s1 += "\n\n%s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
-    s1+= "\nAttributeError  : '%s'" %(sPara)
-    raise AttributeError (s1)
+    se += "\n\n%s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
+    se+= "\nAttributeError  : '%s'" %(sPara)
+    raise AttributeError (se)
 #
-def __printRLYSettingOC__(rl):
+def __printRLYSettingOC__(rl,cmt):
     polar = __getRelaySetting__(rl,'POLAR')
-    s1 = '\nSetting for : '+rl.toString()
-    ak = list(OLXOBJ_RLYSET[type(rl).__name__].keys())
+    sres = '\nSetting for : '+rl.toString()
+    ak = list(__OLXOBJ_RLYSET__[type(rl).__name__].keys())
     ak.sort(reverse = True)
     for a1 in ak:
-        val = OLXOBJ_RLYSET[type(rl).__name__][a1]
+        val = __OLXOBJ_RLYSET__[type(rl).__name__][a1]
         if len(val)>2 :
             if polar in val[1]:
                 v1 = __getRelaySetting__(rl,a1)
-                s1+= '\n' + a1.ljust(15)+' : '+str(round(v1,5)).ljust(15)+'\t'+ val[3]
+                sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)+'\t'+ val[3]
         else:
             v1 = __getRelaySetting__(rl,a1)
-            try:
-                s1+= '\n' + a1.ljust(15)+' : '+str(round(v1,5)).ljust(15)+'\t'+ val[1]
-            except:
-                s1+= '\n' + a1.ljust(15)+' : '+str(v1).ljust(15)+'\t'+ val[1]
-    print(s1)
+            sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)+'\t'+ val[1]
+    return sres
 #
-def __printRLYSettingDS__(rl):
-    s1 = '\nSetting for : '+rl.toString()
+def __printRLYSettingDS__(rl,cmt):
+    sres = '\nSetting for : '+rl.toString()
     va = __getRelaySetting__(rl,'')
     ka = list(va.keys())
     ka.sort()
     for k in ka:
-        v = va[k]
-        if k in OLXOBJ_RLYSET[type(rl).__name__].keys():
-            try:
-                s1+= '\n' + k.ljust(15)+' : '+str(round(v,5)).ljust(15) +'  '+OLXOBJ_RLYSET[type(rl).__name__][k][1]
-            except:
-                s1+= '\n' + k.ljust(15)+' : '+str(v).ljust(15) +'  '+OLXOBJ_RLYSET[type(rl).__name__][k][1]
-        else:
-            s1+= '\n' + k.ljust(15)+' : '+str(round(v,5)).ljust(15)
-    print(s1)
+        s1= k.ljust(15)+' : '+toString(va[k]).ljust(15)
+        if k in __OLXOBJ_RLYSET__[type(rl).__name__].keys():
+            if len(s1)<37:
+                s1+='  '+__OLXOBJ_RLYSET__[type(rl).__name__][k][1]
+            else:
+                s1+='\n                                   '+__OLXOBJ_RLYSET__[type(rl).__name__][k][1]
+        sres+='\n'+s1
+    return sres
 #
-def __printRLYSetting__(rl):
+def __printRLYSetting__(rl,cmt):
     if type(rl) in {RLYOCG,RLYOCP}:
-        __printRLYSettingOC__(rl)
+        return __printRLYSettingOC__(rl,cmt)
     elif type(rl) in {RLYDSG,RLYDSP}:
-        __printRLYSettingDS__(rl)
+        return __printRLYSettingDS__(rl,cmt)
 #
 def __getRelaySetting__(rl,sPara):
     __check_currFileIdx__(rl)
@@ -6202,7 +7245,7 @@ def __getRelaySettingName__(rl):
 def __getRelaySettingOC__(rl,sPara):# {'RLYOCG','RLYOCP'}
     #
     if sPara==None or sPara =='':
-        sPara = OLXOBJ_RLYSET[type(rl).__name__].keys()
+        sPara = __OLXOBJ_RLYSET__[type(rl).__name__].keys()
         res = dict()
         for sp1 in sPara:
             try:
@@ -6211,11 +7254,11 @@ def __getRelaySettingOC__(rl,sPara):# {'RLYOCG','RLYOCP'}
                 pass
         return res
     #
-    if sPara not in OLXOBJ_RLYSET[type(rl).__name__].keys():
+    if sPara not in __OLXOBJ_RLYSET__[type(rl).__name__].keys():
         polar = __getRelaySetting__(rl,'POLAR')
         __errorParaSettingOC__(rl,polar,sPara)
     #------------------
-    cc = OLXOBJ_RLYSET[type(rl).__name__][sPara]
+    cc = __OLXOBJ_RLYSET__[type(rl).__name__][sPara]
     paraCode = cc[0]
     if len(cc)==2:
         return __getData__(rl.__hnd__,paraCode)
@@ -6230,24 +7273,24 @@ def __getRelaySettingOC__(rl,sPara):# {'RLYOCG','RLYOCP'}
     return r[k]
 #
 def __errorParaSettingOC__(rl,polar,sPara,sc ='',value =None):
-    s1 = '\nAll Setting (POLAR=%i) for %s : '%(polar,type(rl).__name__) + rl.toString()
-    for a1,val in OLXOBJ_RLYSET[type(rl).__name__].items():
+    se = '\nAll Setting (POLAR=%i) for %s : '%(polar,type(rl).__name__) + rl.toString()
+    for a1,val in __OLXOBJ_RLYSET__[type(rl).__name__].items():
         if len(val)>2 :
             if polar in val[1]:
-                s1+= '\n' + a1.ljust(15)+' : '+ val[3]
+                se+= '\n' + a1.ljust(15)+' : '+ val[3]
         else:
-            s1+= '\n' + a1.ljust(15)+' : '+ val[1]
+            se+= '\n' + a1.ljust(15)+' : '+ val[1]
     if sc:
-        s1 += "\n\n%s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
+        se += "\n\n%s.changeSetting('%s',%s)"%(type(rl).__name__,sPara,str(value))
     else:
-        s1 += "\n\n%s.getSetting('%s')"%(type(rl).__name__,sPara)
-    s1+= "\nAttributeError : '%s' (POLAR=%i)" %(sPara,polar)
-    raise AttributeError (s1)
+        se += "\n\n%s.getSetting('%s')"%(type(rl).__name__,sPara)
+    se+= "\nAttributeError : '%s' (POLAR=%i)" %(sPara,polar)
+    raise AttributeError (se)
 #
 def __getRelaySettingDS__(rl,sPara):    # {'RLYDSG','RLYDSP'}
     hnd1 = rl.__hnd__
     if sPara==None or sPara =='':
-        sPara1 = list(OLXOBJ_RLYSET[type(rl).__name__].keys())
+        sPara1 = list(__OLXOBJ_RLYSET__[type(rl).__name__].keys())
         if type(rl)==RLYDSG:
             nC = __getDatai__(hnd1,OlxAPIConst.DG_nParamCount)
             label = __getData__(hnd1,OlxAPIConst.DG_vParamLabels)
@@ -6265,7 +7308,7 @@ def __getRelaySettingDS__(rl,sPara):    # {'RLYDSG','RLYDSP'}
         return res
     #
     try:
-        paraCode = OLXOBJ_RLYSET[type(rl).__name__][sPara]
+        paraCode = __OLXOBJ_RLYSET__[type(rl).__name__][sPara]
     except:
         paraCode = None
     #
@@ -6287,14 +7330,14 @@ def __getRelaySettingDS__(rl,sPara):    # {'RLYDSG','RLYDSP'}
         if sPara1 ==label[i].upper():
             return valF[i]
     # Error
-    s1 = '\nAll Setting for %s : '%(type(rl).__name__) + rl.toString()
-    for a1,val in OLXOBJ_RLYSET[type(rl).__name__].items():
-        s1+= '\n' + a1.ljust(15)+' : '+ val[1]
+    se = '\nAll Setting for %s : '%(type(rl).__name__) + rl.toString()
+    for a1,val in __OLXOBJ_RLYSET__[type(rl).__name__].items():
+        se+= '\n' + a1.ljust(15)+' : '+ val[1]
     for i in range(nC):
-        s1+= '\n' + label[i].ljust(15)
-    s1 += "\n\n%s.getSetting('%s')"%(type(rl).__name__,sPara)
-    s1+= "\nAttributeError : '%s'" %(sPara)
-    raise AttributeError (s1)
+        se+= '\n' + label[i].ljust(15)
+    se += "\n\n%s.getSetting('%s')"%(type(rl).__name__,sPara)
+    se+= "\nAttributeError : '%s'" %(sPara)
+    raise AttributeError (se)
 #
 def __check_currFileIdx1__():
     if __CURRENT_FILE_IDX__==0:
@@ -6337,11 +7380,11 @@ def __isInScope__(ob,scope):
     elif typ==MULINE:
         return __brIsInScope__([ob.LINE1.BUS1,ob.LINE1.BUS2],scope['areaNum'],scope['zoneNum'],scope['optionTie'],[scope['kV'],scope['kV']]) \
             or __brIsInScope__([ob.LINE2.BUS1,ob.LINE2.BUS2],scope['areaNum'],scope['zoneNum'],scope['optionTie'],[scope['kV'],scope['kV']])
-    elif typ in OLXOBJ_EQUIPMENTO:
+    elif typ in __OLXOBJ_EQUIPMENTO__:
         return __brIsInScope__(ob.BUS,scope['areaNum'],scope['zoneNum'],scope['optionTie'],[scope['kV'],scope['kV']])
-    elif typ not in OLXOBJ_EQUIPMENTO and typ!=MULINE:
+    elif typ not in __OLXOBJ_EQUIPMENTO__ and typ!=MULINE:
         return __busIsInScope__(ob.BUS,scope['areaNum'],scope['zoneNum'],scope['kV'])
-    raise Exception ('Error Type not in : '+str(OLXOBJ_LIST))
+    raise Exception ('Error Type not in : '+str(__OLXOBJ_LIST__))
 #
 def __busIsInScope__(b1,areaNum,zoneNum,kV):
     """
@@ -6377,6 +7420,41 @@ def __getTypeParaCode__(paraCode):
     elif vt == OlxAPIConst.VT_DOUBLE:
         return float
     return list
+#
+def __currentFault__(obj,style):
+    #
+    if obj is None:
+        hnd = OlxAPIConst.HND_SC
+    else:
+        hnd = obj.__hnd__
+    #
+    vd12Mag = (c_double*12)(0.0)
+    vd12Ang = (c_double*12)(0.0)
+    #
+    if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.GetSCCurrent( hnd, vd12Mag, vd12Ang, c_int(style)):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    #
+    if obj is None or type(obj)==TERMINAL:
+        return __resultComplex__(vd12Mag[:3],vd12Ang[:3])
+    if type(obj)==XFMR3:
+        return __resultComplex__(vd12Mag[:12],vd12Ang[:12])
+    if type(obj)==XFMR:
+        return __resultComplex__(vd12Mag[:8],vd12Ang[:8])
+    if type(obj) in {SHIFTER, LINE, DCLINE2, SERIESRC, SWITCH}:
+        return __resultComplex__(vd12Mag[:6],vd12Ang[:6])
+    return __resultComplex__(vd12Mag[:4],vd12Ang[:4])
+#
+def __voltageFault__(obj,style):
+    vd9Mag  = (c_double*9)(0.0)
+    vd9Ang  = (c_double*9)(0.0)
+    if ( OlxAPIConst.OLXAPI_FAILURE == OlxAPI.GetSCVoltage(obj.__hnd__, vd9Mag, vd9Ang, c_int(style)) ) :
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    #
+    if type(obj) in {XFMR, SHIFTER,LINE,DCLINE2,SERIESRC,SWITCH}:
+        return __resultComplex__(vd9Mag[:6],vd9Ang[:6])
+    if type(obj)==XFMR3:
+        return __resultComplex__(vd9Mag[:9],vd9Ang[:9])
+    return __resultComplex__(vd9Mag[:3],vd9Ang[:3])
 #
 def __resultComplex__(v1,v2):
     res = []
@@ -6443,20 +7521,20 @@ def __getErrValue__(st,obj):
             return 'Found (ValueError) : '+__getSobjLst__(obj) +' len=%i'%len(obj)
         return "Found (ValueError) : "+str(obj)
     else:
-        s1= 'Found (ValueError) : (%s) '%type(obj).__name__
-        if type(s1)==list:
-            s1+='['
+        se= 'Found (ValueError) : (%s) '%type(obj).__name__
+        if type(obj)==list:
+            se+='['
             for o1 in obj:
-                s1+= type(o1).__name__ +','
+                se+= type(o1).__name__ +','
             if len(obj)>0:
-                s1 =s1[:-1]
-            s1+=']'
+                se =se[:-1]
+            se+=']'
         else:
             if type(obj)==str:
-                s1 += "'"+str(obj)+"'"
+                se += "'"+str(obj)+"'"
             else:
-                s1 += str(obj)
-        return s1
+                se += str(obj)
+        return se
 #
 def __getClassical__(sp):
     obj = sp.__paraInput__['obj']
@@ -6475,11 +7553,7 @@ def __getClassical__(sp):
     para1['X'] = c_double(Z[1])
     #
     para1['fltConn'] = (c_int*4)(0)
-    dfltConn ={'3LG':[0,1],
-               '2LG:BC':[1,1],'2LG:CA':[1,2],'2LG:AB':[1,3],'2LG:CB':[1,1],'2LG:AC':[1,2],'2LG:BA':[1,3],\
-               '1LG:A':[2,1] ,'1LG:B':[2,2] ,'1LG:C':[2,3],\
-               'LL:BC':[3,1] ,'LL:CA':[3,2] ,'LL:AB':[3,3] ,'LL:CB':[3,1] ,'LL:AC':[3,2] ,'LL:BA':[3,3]}
-    v1 = dfltConn[fltConn]
+    v1 = __OLXOBJ_fltConnCLS__[fltConn]
     para1['fltConn'][v1[0]] = v1[1]
     #
     para1['outageLst'] = (c_int*100)(0)
@@ -6490,7 +7564,7 @@ def __getClassical__(sp):
     if outage is not None:
         option = outage.option.upper()
         outage.__check1__()
-        la = outage.__outageLst__
+        la = outage.outageLst
         for i in range(len(la)):
             __check_currFileIdx__(la[i])
             para1['outageLst'][i]= la[i].__hnd__
@@ -6572,11 +7646,7 @@ def __getSimultaneous__(sp):
         dfltConn = {'AB':0,'AB':0,'BC':1,'CB':1,'AC':2,'CA':2}
         para1['PHASETYPE'] = str(dfltConn[fltConn])
     elif fltApp in {'BUS','CLOSE-IN','LINE-END'}:
-        dfltConn = {'3LG':[0,0],
-               '2LG:BC':[1,1],'2LG:CA':[1,2],'2LG:AB':[1,0],'2LG:CB':[1,1],'2LG:AC':[1,2],'2LG:BA':[1,0],\
-               '1LG:A':[2,0] ,'1LG:B':[2,1] ,'1LG:C':[2,2],\
-               'LL:BC':[3,1] ,'LL:CA':[3,2] ,'LL:AB':[3,0] ,'LL:CB':[3,1] ,'LL:AC':[3,2] ,'LL:BA':[3,0]}
-        v1 = dfltConn[fltConn]
+        v1 = __OLXOBJ_fltConnSIM__[fltConn]
         para1['FLTCONN'] = str(v1[0])
         para1['PHASETYPE'] = str(v1[1])
     elif fltApp=='BUS2BUS':
@@ -6637,11 +7707,7 @@ def __getSEA__(sp):
     except:
         pass
     #
-    dfltConn = {'3LG':1,\
-                '2LG:BC':2,'2LG:CA':3,'2LG:AB':4,'2LG:CB':2,'2LG:AC':3,'2LG:BA':4,\
-                '1LG:A':5,'1LG:B':6,'1LG:C':7,\
-                'LL:BC':8,'LL:CA':9 ,'LL:AB':10,'LL:CB':8,'LL:AC':9 ,'LL:BA':10}
-    para1['fltOpt'][0] = dfltConn[fltConn]
+    para1['fltOpt'][0] = __OLXOBJ_fltConnSEA__[fltConn]
     para1['fltOpt'][2] = Z[0]
     para1['fltOpt'][3] = Z[1]
     #
@@ -6650,6 +7716,19 @@ def __getSEA__(sp):
         para1['runOpt'][i]=deviceOpt[i]
     #
     para1['tiers'] = tiers
+    return para1
+#
+def __getSEA_EX__(sp):
+    # time,fltConn,Z
+    time = sp.__paraInput__['time']
+    fltConn = sp.__paraInput__['fltConn'].upper()
+    Z = sp.__paraInput__['Z']
+    #
+    para1 = dict()
+    para1['time'] = time
+    para1['Z'] = Z
+    #
+    para1['fltOpt'] = __OLXOBJ_fltConnSEA__[fltConn]
     return para1
 #
 def __checkClassical__(sp):
@@ -6699,12 +7778,10 @@ def __checkClassical__(sp):
             se+= "\n\tobj(EQUIPMENT)=%s, fltApp=%s"%(type(obj.EQUIPMENT).__name__,fltApp)
             raise ValueError(se)
     #check fltConn
-    vfltConn = ['3LG','2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA',\
-                 '1LG:A','1LG:B','1LG:C','LL:BC','LL:CA','LL:AB','LL:CB','LL:AC','LL:BA']
-    if type(fltConn) != str or fltConn.upper() not in vfltConn:
+    if type(fltConn) != str or fltConn.upper() not in __OLXOBJ_fltConn__:
         se+= '\nfltConn : Fault connection code'
-        se+= "\n\tRequired     (str) :" + str(vfltConn[:7])[1:-1]
-        se+= '\n\t                    ' + str(vfltConn[7:])[1:-1]
+        se+= "\n\tRequired     (str) :" + str(__OLXOBJ_fltConn__[:7])[:-1]
+        se+= ',\n\t                     ' + str(__OLXOBJ_fltConn__[7:])[1:]
         se+= '\n\t' +__getErrValue__(str,fltConn)
         raise ValueError(se)
     #check Z
@@ -6738,6 +7815,8 @@ def __checkSimultaneous__(sp):
                 percent = float(fltApp1[:fltApp1.index('%')])
                 flag = percent>=0 and percent<=100
             except:
+                flag = False
+            if not fltApp1.endswith('%'):
                 flag = False
     if not flag:
         se+= '\n  fltApp : (str) Fault application code'
@@ -6775,12 +7854,10 @@ def __checkSimultaneous__(sp):
         __check_currFileIdx__(obj)
     #
     if fltApp1 in {'BUS','CLOSE-IN','LINE-END'} or fltApp1.find('%')>0:
-        vd = ['3LG','2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA','1LG:A','1LG:B','1LG:C',\
-                'LL:BC','LL:CA','LL:AB','LL:CB','LL:AC','LL:BA']
-        if type(fltConn)!=str or fltConn.upper() not in vd:
+        if type(fltConn)!=str or fltConn.upper() not in __OLXOBJ_fltConn__:
             se+= '\n  fltConn  : (str) Fault connection code'
-            se+= '\n\tRequired : (str) in '+str(vd[:6])
-            se+= '\n\t                    ' +str(vd[6:])
+            se+= '\n\tRequired : (str) in '+str(__OLXOBJ_fltConn__[:7])[:-1]
+            se+= ',\n\t                     ' +str(__OLXOBJ_fltConn__[7:])[1:]
             se+= '\n\t' +__getErrValue__(str,fltConn)
             raise ValueError(se)
         #
@@ -6856,31 +7933,36 @@ def __checkSEA__(sp):
         se+= '\n\tRequired          : BUS or RLYGROUP or TERMINAL'
         se += '\n\t' +__getErrValue__(TERMINAL,obj)
         raise ValueError(se)
-    #
-    dfltApp  =['BUS','CLOSE-IN']
-    dfltApp1 =['BUS','CLOSE-IN','xx%']
-    flag = type(fltApp)==str
-    if flag:
-        fltApp1 = fltApp.upper()
-        flag = fltApp1 in dfltApp
+    if type(obj)==BUS:
+        if type(fltApp)!=str or fltApp.upper()!='BUS':
+            se+= 'with obj=BUS'
+            se+= '\n  fltApp : (str) Fault application code'
+            se+= "\n\tRequired : 'BUS'"
+            se+= '\n\t' +__getErrValue__(str,fltApp)
+            raise ValueError(se)
+    else:
+        flag = type(fltApp)==str
+        if flag:
+            flag = fltApp.upper()=='CLOSE-IN'
+            if not flag:
+                try:
+                    percent = float(fltApp[:fltApp.index('%')])
+                    flag = percent>=0 and percent<=100
+                except:
+                    flag = False
+                if not fltApp.endswith('%'):
+                    flag = False
         if not flag:
-            try:
-                percent = float(fltApp1[:fltApp1.index('%')])
-                flag = percent>=0 and percent<=100
-            except:
-                flag = False
-    if not flag:
-        se+= '\n  fltApp : (str) Fault application code'
-        se+= '\n\tRequired : (str) in '+str(dfltApp1) +' (0<=xx<=100)'
-        se+= '\n\t' +__getErrValue__(str,fltApp)
-        raise ValueError(se)
+            se+= ' with obj=RLYGROUP/TERMINAL'
+            se+= '\n  fltApp : (str) Fault application code'
+            se+= "\n\tRequired : 'CLOSE-IN' or 'xx%' (0<=xx<=100)"
+            se+= '\n\t' +__getErrValue__(str,fltApp)
+            raise ValueError(se)
     #
-    vfltConn = ['3LG','2LG:BC','2LG:CA','2LG:AB','2LG:CB','2LG:AC','2LG:BA',\
-                '1LG:A','1LG:B','1LG:C','LL:BC','LL:CA','LL:AB','LL:CB','LL:AC','LL:BA']
-    if type(fltConn) != str or fltConn.upper() not in vfltConn:
+    if type(fltConn) != str or fltConn.upper() not in __OLXOBJ_fltConn__:
         se+= '\nfltConn : Fault connection code'
-        se+= "\n\tRequired       :(str) in " + str(vfltConn[:6])
-        se+= "\n\t                         " + str(vfltConn[6:])
+        se+= "\n\tRequired       :(str) in " + str(__OLXOBJ_fltConn__[:7])
+        se+= ",\n\t                          " + str(__OLXOBJ_fltConn__[7:])
         se+= '\n\t' +__getErrValue__(str,fltConn)
         raise ValueError(se)
     #
@@ -6913,18 +7995,211 @@ def __checkSEA__(sp):
         se+= '\n\t' +__getErrValue__(list,Z)
         raise ValueError(se)
 #
+def __checkSEA_EX__(sp):
+    time = sp.__paraInput__['time']
+    fltConn = sp.__paraInput__['fltConn']
+    Z = sp.__paraInput__['Z']
+    #
+    se = '\nSPEC_FLT.SEA_EX(time,fltConn,Z)'
+    if type(time) not in {int,float} or time<=0:
+        se+= '\ttime [s]: time of Additional Event'
+        se+= "\n\tRequired : >0"
+        se+= '\n\t' +__getErrValue__(float,time)
+        raise ValueError(se)
+    if type(fltConn) != str or fltConn.upper() not in __OLXOBJ_fltConn__:
+        se+= '\nfltConn : Fault connection code'
+        se+= "\n\tRequired       :(str) in " + str(__OLXOBJ_fltConn__[:7])[:-1]
+        se+= ",\n\t                          " + str(__OLXOBJ_fltConn__[7:])[1:]
+        se+= '\n\t' +__getErrValue__(str,fltConn)
+        raise ValueError(se)
+    #
+    if type(Z)!=list or len(Z)!=2 or type(Z[0]) not in {float,int} or type(Z[1]) not in {float,int}:
+        se+= '\n\tZ : [R,X] Fault impedances in Ohm'
+        se+= '\n\tRequired      : [float,float]'
+        se+= '\n\t' +__getErrValue__(list,Z)
+        raise ValueError(se)
+#
 def __getSEA_Result__(index):
     dTime = c_double(0)
-    dCurrent = c_double(0)
-    nUserEvent = c_int(0)
+    dCurrent = c_double(0) # Highest phase fault current magnitude at this step
+    nUserEvent = c_int(0) # flag showing is this is an user-defined event
     szEventDesc = create_string_buffer(b'\000' * 512 * 4)     # 4*512 bytes buffer for event description
-    szFaultDest = create_string_buffer(b'\000' * 512 * 50)    # 50*512 bytes buffer for fault description
-    nStep = OlxAPI.GetSteppedEvent(c_int(index),byref(dTime),byref(dCurrent),byref(nUserEvent),szEventDesc,szFaultDest)
-    if index==0:
+    szFaultDesc = create_string_buffer(b'\000' * 512 * 50)    # 50*512 bytes buffer for fault description
+    nStep = OlxAPI.GetSteppedEvent(c_int(index),byref(dTime),byref(dCurrent),byref(nUserEvent),szEventDesc,szFaultDesc)
+    if index==0: # step = 0 to get total number of steps
         return nStep-1
-    time = dTime.value
-    fdes = OlxAPI.decode(cast(szFaultDest, c_char_p).value)
-    breaker = []
-    device = []
-    #[time,faultDescription,breaker,device...]
-    return [time,fdes,breaker,device]
+    res = dict()
+    res['time'] = dTime.value
+    res['currentMax'] = dCurrent.value
+    res['EventFlag'] = nUserEvent.value
+    res['EventDesc'] = OlxAPI.decode(cast(szEventDesc, c_char_p).value)
+    res['FaultDesc'] = OlxAPI.decode(cast(szFaultDesc, c_char_p).value)
+    res['breaker'] = [] # @TO ADD
+    res['device'] = []  # @TO ADD
+    return res
+#
+def __runSimulate__(specFlt,clearPrev):
+    global __INDEX_SIMUL__,__COUNT_FAULT__,__TYPEF_SIMUL__,FltSimResult
+    #
+    if clearPrev==1 or (type(specFlt)==SPEC_FLT and specFlt.__type__=='SEA') or \
+       (type(specFlt)==list and specFlt[0].__type__=='SEA') :
+        __INDEX_SIMUL__ +=1
+        FltSimResult.clear()
+    #
+    if type(specFlt)==SPEC_FLT:
+        specFlt = [specFlt]
+    # check data
+    for sp1 in specFlt:
+        sp1.checkData()
+    # run Classical
+    if specFlt[0].__type__=='Classical':
+        __TYPEF_SIMUL__ = 'Classical'
+        para = specFlt[0].getData()
+        if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.DoFault(para['hnd'],para['fltConn'],para['fltOpt'],para['outageOpt'],para['outageLst'],para['R'],para['X'],c_int(clearPrev)):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.PickFault(c_int(-1),c_int(0)): # pick last fault
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        print("OLCase.simulateFault('Classical')-Classical: Operation executed successfully.")
+        #
+        des = OlxAPI.FaultDescription(0)
+        id1 = des.index('.')
+        __COUNT_FAULT__ = int(des[:id1])
+    # run SEA
+    elif specFlt[0].__type__=='SEA':
+        __TYPEF_SIMUL__ = 'SEA'
+        para = specFlt[0].getData()
+        sn ='SEA-Single'
+        for i in range(1, len(specFlt)):
+            sn = 'SEA-Multiple'
+            para1 = specFlt[i].getData()
+            k = 4*i
+            para['fltOpt'][k] = para1['fltOpt']
+            para['fltOpt'][k+1] = para1['time']
+            para['fltOpt'][k+2] = para1['Z'][0]
+            para['fltOpt'][k+3] = para1['Z'][1]
+        #
+        if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.DoSteppedEvent(para['hnd'],para['fltOpt'],para['runOpt'],para['tiers']):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        print("OLCase.simulateFault('%s'): Operation executed successfully."%sn)
+        #
+        __COUNT_FAULT__ = __getSEA_Result__(0)
+    else:
+        # run simultaneous
+        __TYPEF_SIMUL__ = 'Simultaneous'
+        import xml.etree.ElementTree as ET
+        data = ET.Element('SIMULATEFAULT')
+        data.set('CLEARPREV',str(clearPrev))
+        data1 = ET.SubElement(data, 'FAULT')
+        for i in range(len(specFlt)):
+            sp1 = specFlt[i]
+            para1 = sp1.getData()
+            data2 = ET.SubElement(data1, 'FLTSPEC')
+            data2.set('FLTDESC','specFlt: '+str(i+1))
+            for k,v in para1.items():
+                data2.set(k,v)
+        #
+        sInput = ET.tostring(data).decode('UTF-8')
+        #print(sInput)
+        if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.Run1LPFCommand(sInput):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        print("OLCase.simulateFault('Simultaneous'): Operation executed successfully.")
+        OlxAPI.PickFault(c_int(-1),c_int(0)) # pick last fault
+        des = OlxAPI.FaultDescription(0)
+        id1 = des.index('.')
+        __COUNT_FAULT__ = int(des[:id1])
+    # finish ---------------------------------------------
+    for sp1 in specFlt:
+        print('\t'+sp1.toString())
+    for i in range(len(FltSimResult),__COUNT_FAULT__):
+        FltSimResult.append( RESULT_FLT(i+1) )
+#
+def __errorsPara__(ob,sPara):
+    sname = type(ob).__name__
+    se = '\nAll methods for %s: \n\t'%sname
+    for vi in ob.__allMethods__:
+        se+=vi +'(),'
+    se = se[:-1]+'\nAll attributes for %s:'%sname
+    for a1 in ob.getAttributes():
+        se+='\n\t' + a1.ljust(15)+ ' : '
+        try:
+            se+=__OLXOBJ_PARA__[sname][a1][1]
+        except:
+            if type(ob) in __OLXOBJ_EQUIPMENTO__:
+                if a1=='BUS':
+                    se+='[BUS] List of Buses of ' +sname
+                elif a1=='RLYGROUP':
+                    se+='[RLYGROUP] List of RLYGROUPs of ' +sname
+                elif a1=='TERMINAL':
+                    se+='[TERMINAL] List of TERMINALs of ' +sname
+        #
+        if type(ob)==RECLSR:
+            if a1.startswith('PH_') :
+                se+= __OLXOBJ_PARA__[sname][a1[3:]][2]
+            elif a1.startswith('GR_') :
+                se+= __OLXOBJ_PARA__[sname][a1[3:]][3]
+        #
+        if a1 in ob.__paraUDF__:
+            se+='(str) %s User-Defined Field'%sname
+        elif a1=='GUID':
+            se+='(str) %s GUID'%sname
+        elif a1=='TAGS':
+            se+='(str) %s TAGS'%sname
+        elif a1=='JRNL':
+            se+='(str) %s Creation and modification log records'%sname
+        elif a1=='MEMO':
+            se+='(str) %s Memo'%sname
+        elif a1=='HANDLE' :
+            se+= '(int) %s handle'%sname
+    #
+    if type(ob) in {RLYOCG,RLYOCP,RLYDSG,RLYDSP}:
+        aset = ob.getSetting()
+        if sPara in aset.keys():
+            se+= "\ntry to call %s.getSetting('%s')"%(sname,sPara)
+        else:
+            se+='\nAll sPara for %s.getSetting(sPara):\n'%sname +str(list(aset.keys()))
+    #
+    se+= "\nAttributeError:\n\t%s object has no attribute/method '%s'" %(sname,ob.__spara__)
+    raise AttributeError (se)
+#
+def __getSubStation__(b1,setEqui,setEquiHnd,xsmall,lsmall):
+    setBus = []
+    for t1 in b1.TERMINAL:
+        e1 = t1.EQUIPMENT
+        eh1 = e1.__hnd__
+        if eh1 not in setEquiHnd:
+            if type(e1) not in {LINE,DCLINE2}:
+                b23 = t1.BUS23
+                setBus.extend(b23)
+                setEqui.append(e1)
+                setEquiHnd.add(eh1)
+                #
+                for bi in b23:
+                    b2e = __getSubStation__(bi,setEqui,setEquiHnd,xsmall,lsmall)
+                    setBus.extend(b2e)
+            # check small LINE
+            elif type(e1)==LINE and xsmall is not None and lsmall is not None:
+                kv1 = t1.BUS1.KV
+                zbase = kv1**2/OLCase.BASEMVA
+                r1,x1 = e1.R*zbase,e1.X*zbase #Ohm
+                ln = e1.LN
+                if ln>0.0:
+                    ln *= __convert_LengthUnit__('km',e1.UNIT.lower())
+                if r1<xsmall and x1<xsmall and ln<lsmall:
+                    b2 = t1.BUS23[0]
+                    setBus.append(b2)
+                    setEqui.append(e1)
+                    setEquiHnd.add(eh1)
+                    b2e = __getSubStation__(b2,setEqui,setEquiHnd,xsmall,lsmall)
+                    setBus.extend(b2e)
+    return setBus
+#
+def __convert_LengthUnit__(len_unit_to,len_unit_from):
+    """  convert length unit from [len_unit_from] => [len_unit_to]  """
+    dictC = {'ft_km':0.0003048,'kt_km':1.852,'mi_km':1.609344,'m_km':0.001,'km_ft':3280.839895,'km_kt':0.539956803,'km_mi':0.6213711922,'km_m':1000,'km_km':1}
+    if len_unit_to == len_unit_from:
+        return 1
+    try:
+        return dictC[len_unit_from+'_km'] * dictC['km_'+len_unit_to]
+    except:
+        return 1
+#

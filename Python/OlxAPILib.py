@@ -8,7 +8,7 @@ __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.3.2"
+__version__   = "1.3.4"
 #
 import sys,os
 import OlxAPI
@@ -1202,7 +1202,215 @@ def getOppositeBranch(hndBr,typeConsi): # all type of branch
     bra,bt,ba,equip = getRemoteTerminals(hndBr,typeConsi)
     #
     return bra
-
+#
+def linez(hnda):
+    """ Calcul total line impedance and length of multisectionLine
+    Args:
+        hnda: list handle of Line (must be TC_LINE,TC_SCAP,TC_SWITCH or TC_BRANCH on)
+    return:
+        Z1,Z0,Length
+    """
+    if type(hnda)!=list:
+        hnda = [hnda]
+    z1,z0,length = 0,0,0
+    setEqui = set()
+    for h1 in hnda:
+        typ1 = OlxAPI.EquipmentType(h1)
+        if typ1==TC_BRANCH:
+            e1 = getEquipmentData([h1],BR_nHandle)[0]
+            typ1 = OlxAPI.EquipmentType(e1)
+        else:
+            e1 = h1
+        if typ1 not in {TC_LINE,TC_SCAP,TC_SWITCH}:
+            raise Exception('OlxAPILib.linez(hnda) invalid handle inputs: %i (must be TC_LINE,TC_SCAP,TC_SWITCH or TC_BRANCH on)'%typ1)
+        if e1 not in setEqui:
+            setEqui.add(e1)
+            if typ1==TC_LINE:
+                R = getEquipmentData([e1],LN_dR)[0]
+                X = getEquipmentData([e1],LN_dX)[0]
+                R0 = getEquipmentData([e1],LN_dR0)[0]
+                X0 = getEquipmentData([e1],LN_dX0)[0]
+                l1 = getEquipmentData([e1],LN_dLength)[0]
+            elif typ1==TC_SWITCH:
+                R,R0,X,X0 = 0,0,0,0
+                l1 = 0
+            elif typ1==TC_SCAP:
+                R = getEquipmentData([e1],SC_dR)[0]
+                X = getEquipmentData([e1],SC_dX)[0]
+                R0 = getEquipmentData([e1],SC_dR0)[0]
+                X0 = getEquipmentData([e1],SC_dX0)[0]
+                l1 = 0
+            z1 += complex(R,X)
+            z0 += complex(R0,X0)
+            length +=l1
+    return z1,z0,length
+#
+def tapLineTool(hnd0,prt=False):
+    """
+    Purpose: Find main sections of Line and sum impedance(Z0,Z1),Length
+        All taps are ignored. Close switches are included.
+        Branches out of service are ignored
+    Args:
+        hnd0: handle of start BRANCH/RLYGROUP
+            Exception if 1st Bus (of start branch) is a tap bus
+            Exception if this BRANCH/RLYGROUP located on XFMR,XFMR3,SHIFTER
+        prt: (True/False)
+            option print to stdout all details when research mainLine
+    return:
+        res['mainLineHnd']  = [[]]     List of all Branche handle in the main-line
+                                   main-line searched by 3 methods in 'Section 8.9 Help/OneLiner Help Contents'
+                                METHOD 1: Enter the same name in the Name field of the line’s main segments
+                                METHOD 2: Include these three characters [T] (or [t]) in the tap lines name
+                                METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+        res['remoteBusHnd']  = []      List of remote buses handle on the mainLine: two for 2-terminal line and >2 for 3-terminal line
+        res['remoteRLGHnd']  = []      List of all relay groups handle at the remote end on the mainLine
+        res['Z1']            = []      List of positive sequence Impedance of the mainLine
+        res['Z0']            = []      List of zero sequence Impedance of the mainLine
+        res['Length']        = []      List of sum length of the mainLine
+    """
+    mainLineHnd,remoteBusHnd,remoteRLGHnd = findLineSections(hnd0,prt)
+    z1,z0,length =[],[],[]
+    for m1 in mainLineHnd:
+        z1i,z0i,lengthi = linez(m1)
+        z1.append(z1i)
+        z0.append(z0i)
+        length.append(lengthi)
+    #
+    res = dict()
+    res['mainLineHnd'] = mainLineHnd
+    res['remoteBusHnd'] = remoteBusHnd
+    res['remoteRLGHnd'] = remoteRLGHnd
+    res['Z0'] = z0
+    res['Z1'] = z1
+    res['Length'] = length
+    return res
+#
+def findLineSections(hnd0,prt=False):
+    """
+    Purpose: Find main sections of Line (LINE,SERIESRC,SWITCH) from a BRANCH/RLYGROUP
+        All taps are ignored. Close switches are included.
+        Branches out of service are ignored
+    Args:
+        hnd0: handle of start BRANCH/RLYGROUP
+            Exception if 1st Bus (of start branch) is a tap bus
+            Exception if this BRANCH/RLYGROUP located on XFMR,XFMR3,SHIFTER
+    return:
+        mainLineHnd  = [[]]     List of all Branche handle in the main-line
+                                    main-line searched by 3 methods in 'Section 8.9 Help/OneLiner Help Contents'
+                                METHOD 1: Enter the same name in the Name field of the line’s main segments
+                                METHOD 2: Include these three characters [T] (or [t]) in the tap lines name
+                                METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+        remoteBusHnd  = []      List of remote buses handle on the mainLine: two for 2-terminal line and >2 for 3-terminal line
+        remoteRLGHnd  = []      List of all relay groups handle at the remote end on the mainLine
+    """
+    ty1 = OlxAPI.EquipmentType(hnd0)
+    if ty1 not in {TC_RLYGROUP,TC_BRANCH}:
+        raise Exception("OlxAPILib.findLineSection(hnd0)\n\t hnd0 must be a handle of BRANCH or RLYGROUP")
+    if ty1==TC_RLYGROUP:
+        hnd0 = getEquipmentData([hnd0],RG_nBranchHnd)[0]
+    b1 = getEquipmentData([hnd0],BR_nBus1Hnd)[0]
+    nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+    typ1  = getEquipmentData([hnd0],BR_nType)[0]
+    if nTap1!=0 :
+        raise Exception("Impossible to start OlxAPILib.findLineSection from a Tap bus :" + OlxAPI.FullBusName(b1))
+    #
+    typeConsi1 = [TC_LINE,TC_SWITCH,TC_SCAP]
+    if typ1 not in typeConsi1:
+        raise Exception("Impossible to start OlxAPILib.findLineSection from XFMR,XFMR3,SHIFTER: \n\t"+fullBranchName(hnd0))
+    #
+    brA_res = lineComponents(hnd0,[TC_LINE,TC_SWITCH,TC_SCAP])
+    mainLineHnd = []
+    remoteRLGHnd = []
+    remoteBusHnd = []
+    if len(brA_res)==1 and len(brA_res[0])==2:# simple result
+        r1 = brA_res[0]
+        b1 = getEquipmentData(r1[1:],BR_nBus1Hnd)[0]
+        nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+        if nTap1==0:
+            mainLineHnd = [r1[:-1]]
+            remoteBusHnd = [b1]
+            try:
+                rg1 = getEquipmentData(r1[1:],BR_nRlyGrp1Hnd)[0]
+            except:
+                rg1 = None
+            remoteRLGHnd = [rg1]
+        return mainLineHnd,remoteBusHnd,remoteRLGHnd
+    # get name and ID
+    ida,naa = [],[]
+    for ri in brA_res:
+        r1 = ri[:-1]
+        ea = getEquipmentData(r1,BR_nHandle)
+        ta = getEquipmentData(r1,BR_nType)
+        ida1,naa1 = [],[]
+        for i in range(len(ea)):
+            if ta[i]==TC_LINE:
+                sID,sName = LN_sID,LN_sName
+            elif ta[i]==TC_SWITCH:
+                sID,sName = SW_sID,SW_sName
+            elif ta[i]==TC_SCAP:
+                sID,sName = SC_sID,SC_sName
+            else:
+                raise Exception ('error type of branch not in TC_LINE,TC_SWITCH,TC_SCAP')
+            id1 = getEquipmentData([ea[i]],sID)[0]
+            na1 = getEquipmentData([ea[i]],sName)[0]
+            ida1.append( id1.upper() )
+            naa1.append( na1.upper() )
+        ida.append(ida1)
+        naa.append(naa1)
+    #
+    if prt:
+        print('Found multi paths from [TERMINAL] '+fullBranchName_1(hnd0))
+    for i in range(len(brA_res)):
+        r1 = brA_res[i]
+        ida1 = ida[i]
+        naa1 = naa[i]
+        if prt:
+            print('\tPath %i:'%(i+1))
+            for i1 in range(len(r1)-1):
+                print('\t\t ',str(i1+1).ljust(2),ida1[i1].ljust(3),naa1[i1].ljust(20),fullBranchName_1(r1[i1]))
+        #MAIN LINE
+        b1 = getEquipmentData(r1[len(r1)-1:],BR_nBus1Hnd)[0]
+        nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+        t1,t2,t3 = False,True,True
+        if nTap1==0: #end by no tap bus
+            # METHOD 1: Enter the same name in the Name field of the line’s main segments
+            setName = set()
+            for n1 in naa1:
+                setName.add(n1)
+            if len(setName)==1 and naa1[0]:
+                t1 = True
+            # METHOD 2:  Include these three characters [T] (or [t]) in the tap lines name
+            for na1 in naa1:
+                if "[T]" in na1:
+                    t2=False
+            # METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+            for id1 in ida1:
+                if "T" in id1:
+                    t3 = False
+            if t1 or (t2 and t3):
+                mainLineHnd.append(r1[:-1])
+    # check Tap3
+    if len(mainLineHnd)>1:
+        ma2 = []
+        for m1 in mainLineHnd:
+            b1 = getEquipmentData(m1,BR_nBus1Hnd)
+            tap1 = getEquipmentData(b1[1:],BUS_nTapBus)
+            for t1 in tap1:
+                if t1==3:
+                    ma2.append(m1)
+        if len(ma2)==0:
+            ma2.append(mainLineHnd[0])
+        mainLineHnd = [m1 for m1 in ma2]
+    #
+    for m1 in mainLineHnd:
+        try:
+            rg1 = getEquipmentData(m1[len(m1)-1:],BR_nRlyGrp2Hnd)[0]
+        except:
+            rg1 = None
+        remoteRLGHnd.append(rg1)
+        b1 = getEquipmentData(m1[len(m1)-1:],BR_nBus2Hnd)[0]
+        remoteBusHnd.append(b1)
+    return mainLineHnd,remoteBusHnd,remoteRLGHnd
 #
 def lineComponents(hndBr,typeConsi): # Without XFMR3
     """
@@ -1215,12 +1423,19 @@ def lineComponents(hndBr,typeConsi): # Without XFMR3
             typeConsi: type considered as component of line
             [TC_LINE,TC_SWITCH,TC_SCAP,TC_PS,TC_XFMR]
 
-        returns :
-            list of branches
+        returns : all path from this hndbr
+             [ [hndbr,br1,br2] , [hndbr,br3,br4] , [hndbr,br3,br5] ]   => 3 paths
+                                              Bus3 (no tap)
+                                              |
+                                              |br2
+                                              |
+                                              Bus(tap)      Bus5 (tap)
+                                              |             |
+                                              |br1          |br5
+                                    hndBr     |     br3     |     br4
+        Illustration:       Bus1--------------Bus2----------Bus---------Bus4
+                            (no tap)          (tap)         (tap)       (no tap)
 
-        Raises:
-            OlxAPIException
-            if road found>1000 => error
     """
     b2t = 0 # not test end by bus
     return lineComponents_0(hndBr,b2t,typeConsi)
@@ -1328,23 +1543,21 @@ def lineComponents_0(hndBr,b2t,typeConsi): # Without XFMR3
         kmax +=1
         if kmax>1000:
             raise Exception("Out of range. Check the network for anomalies.")
-
-    #check finish by non Tap bus
+    #check circle by tapbus (branche //)
     resF = []
     for bra1 in brA_res:
-        br1 = bra1[len(bra1)-1]
         if b2t<=0:
-            b1 = getEquipmentData([br1],BR_nBus1Hnd)[0]
-            nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
-            if nTap1 ==0:
+            br1 = bra1[len(bra1)-1]
+            br2 = bra1[len(bra1)-2]
+            equiHnd = getEquipmentData([br1,br2],BR_nHandle)
+            if equiHnd[0]==equiHnd[1]:
                 resF.append(bra1)
         else: # test end by b2t
+            br1 = bra1[len(bra1)-1]
             b2 = getEquipmentData([br1],BR_nBus2Hnd)[0]
             if b2==b2t:
                 resF.append(bra1)
-    #
     return resF
-
 #
 def isMainLine(hndLna):
     if len(hndLna)<=1:
@@ -1355,23 +1568,26 @@ def isMainLine(hndLna):
     for i in range(len(ida)):
         ida[i] = (ida[i].upper()).replace(" ","")
         naa[i] = (naa[i].upper()).replace(" ","")
-
+    t1,t2,t3 = False,True,True
     # METHOD 1: Enter the same name in the Name field of the line’s main segments
-    for i in range(1,len(hndLna)):
-        if (naa[i]!= naa[0]):
-            return False
+    setName = set()
+    for n1 in naa:
+        setName.add(n1)
+    if len(setName)==1 and naa[0]:
+        t1 = True
 
     # METHOD 2:  Include these three characters [T] (or [t]) in the tap lines name
+
     for i in range(1,len(hndLna)):
         if "[T]" in naa[i]:
-            return False
+            t2 = False
 
     # METHOD 3: Give the tap lines circuit IDs that contain the capital letter T (or lowercase letter t)
     for i in range(1,len(hndLna)):
         if "T" in ida[i]:
-            return False
+            t3 = False
     #
-    return True
+    return t1 or (t2 and t3)
 
 #
 def getRemoteTerminals(hndBr,typeConsi):
