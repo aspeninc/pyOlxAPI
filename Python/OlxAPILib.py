@@ -8,7 +8,7 @@ __copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.3.4"
+__version__   = "1.3.5"
 #
 import sys,os
 import OlxAPI
@@ -1214,6 +1214,7 @@ def linez(hnda):
         hnda = [hnda]
     z1,z0,length = 0,0,0
     setEqui = set()
+    u0 = None
     for h1 in hnda:
         typ1 = OlxAPI.EquipmentType(h1)
         if typ1==TC_BRANCH:
@@ -1231,6 +1232,11 @@ def linez(hnda):
                 R0 = getEquipmentData([e1],LN_dR0)[0]
                 X0 = getEquipmentData([e1],LN_dX0)[0]
                 l1 = getEquipmentData([e1],LN_dLength)[0]
+                u1 = getEquipmentData([e1],LN_sLengthUnit)[0]
+                if u0!=None:
+                    l1 *= AppUtils.convert_LengthUnit_1(u0,u1)
+                else:
+                    u0 = u1
             elif typ1==TC_SWITCH:
                 R,R0,X,X0 = 0,0,0,0
                 l1 = 0
@@ -1242,7 +1248,7 @@ def linez(hnda):
                 l1 = 0
             z1 += complex(R,X)
             z0 += complex(R0,X0)
-            length +=l1
+            length += l1
     return z1,z0,length
 #
 def tapLineTool(hnd0,prt=False):
@@ -1312,11 +1318,11 @@ def findLineSections(hnd0,prt=False):
     nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
     typ1  = getEquipmentData([hnd0],BR_nType)[0]
     if nTap1!=0 :
-        raise Exception("Impossible to start OlxAPILib.findLineSection from a Tap bus :" + OlxAPI.FullBusName(b1))
+        raise Exception("\nImpossible to start OlxAPILib.findLineSection from a Tap bus :" + OlxAPI.FullBusName(b1))
     #
     typeConsi1 = [TC_LINE,TC_SWITCH,TC_SCAP]
     if typ1 not in typeConsi1:
-        raise Exception("Impossible to start OlxAPILib.findLineSection from XFMR,XFMR3,SHIFTER: \n\t"+fullBranchName(hnd0))
+        raise Exception("\nImpossible to start OlxAPILib.findLineSection from XFMR,XFMR3,SHIFTER: \n\t"+fullBranchName_1(hnd0))
     #
     brA_res = lineComponents(hnd0,[TC_LINE,TC_SWITCH,TC_SCAP])
     mainLineHnd = []
@@ -1325,15 +1331,14 @@ def findLineSections(hnd0,prt=False):
     if len(brA_res)==1 and len(brA_res[0])==2:# simple result
         r1 = brA_res[0]
         b1 = getEquipmentData(r1[1:],BR_nBus1Hnd)[0]
-        nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
-        if nTap1==0:
-            mainLineHnd = [r1[:-1]]
-            remoteBusHnd = [b1]
-            try:
-                rg1 = getEquipmentData(r1[1:],BR_nRlyGrp1Hnd)[0]
-            except:
-                rg1 = None
-            remoteRLGHnd = [rg1]
+        #nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+        mainLineHnd = [r1[:-1]]
+        remoteBusHnd = [b1]
+        try:
+            rg1 = getEquipmentData(r1[1:],BR_nRlyGrp1Hnd)[0]
+        except:
+            rg1 = None
+        remoteRLGHnd = [rg1]
         return mainLineHnd,remoteBusHnd,remoteRLGHnd
     # get name and ID
     ida,naa = [],[]
@@ -1343,14 +1348,8 @@ def findLineSections(hnd0,prt=False):
         ta = getEquipmentData(r1,BR_nType)
         ida1,naa1 = [],[]
         for i in range(len(ea)):
-            if ta[i]==TC_LINE:
-                sID,sName = LN_sID,LN_sName
-            elif ta[i]==TC_SWITCH:
-                sID,sName = SW_sID,SW_sName
-            elif ta[i]==TC_SCAP:
-                sID,sName = SC_sID,SC_sName
-            else:
-                raise Exception ('error type of branch not in TC_LINE,TC_SWITCH,TC_SCAP')
+            sID = dictCode_BR_sID[ta[i]]
+            sName = dictCode_BR_sName[ta[i]]
             id1 = getEquipmentData([ea[i]],sID)[0]
             na1 = getEquipmentData([ea[i]],sName)[0]
             ida1.append( id1.upper() )
@@ -1358,37 +1357,56 @@ def findLineSections(hnd0,prt=False):
         ida.append(ida1)
         naa.append(naa1)
     #
-    if prt:
-        print('Found multi paths from [TERMINAL] '+fullBranchName_1(hnd0))
-    for i in range(len(brA_res)):
-        r1 = brA_res[i]
-        ida1 = ida[i]
-        naa1 = naa[i]
+    if len(brA_res)==1:
+        mainLineHnd.append(brA_res[0][:-1])
+    else:
         if prt:
-            print('\tPath %i:'%(i+1))
-            for i1 in range(len(r1)-1):
-                print('\t\t ',str(i1+1).ljust(2),ida1[i1].ljust(3),naa1[i1].ljust(20),fullBranchName_1(r1[i1]))
-        #MAIN LINE
-        b1 = getEquipmentData(r1[len(r1)-1:],BR_nBus1Hnd)[0]
-        nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
-        t1,t2,t3 = False,True,True
-        if nTap1==0: #end by no tap bus
-            # METHOD 1: Enter the same name in the Name field of the line’s main segments
-            setName = set()
-            for n1 in naa1:
-                setName.add(n1)
-            if len(setName)==1 and naa1[0]:
-                t1 = True
-            # METHOD 2:  Include these three characters [T] (or [t]) in the tap lines name
-            for na1 in naa1:
-                if "[T]" in na1:
-                    t2=False
-            # METHOD 3: Give the tap lines circuit IDs that contain letter T or t
-            for id1 in ida1:
-                if "T" in id1:
-                    t3 = False
-            if t1 or (t2 and t3):
-                mainLineHnd.append(r1[:-1])
+            print('Found multi paths from [TERMINAL] '+fullBranchName_1(hnd0))
+        for i in range(len(brA_res)):
+            r1 = brA_res[i]
+            ida1 = ida[i]
+            naa1 = naa[i]
+            if prt:
+                print('\tPath %i:'%(i+1))
+                for i1 in range(len(r1)-1):
+                    print('\t\t ',str(i1+1).ljust(2),ida1[i1].ljust(3),naa1[i1].ljust(20),fullBranchName_1(r1[i1]))
+            #MAIN LINE
+            b1 = getEquipmentData(r1[len(r1)-1:],BR_nBus1Hnd)[0]
+            nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
+            t1,t2,t3 = False,True,True
+            if nTap1==0: #end by no tap bus
+                # METHOD 1: Enter the same name in the Name field of the line’s main segments
+                setName = set()
+                for n1 in naa1:
+                    setName.add(n1)
+                if len(setName)==1 and naa1[0]:
+                    t1 = True
+                # METHOD 2:  Include these three characters [T] (or [t]) in the tap lines name
+                for na1 in naa1:
+                    if "[T]" in na1:
+                        t2=False
+                # METHOD 3: Give the tap lines circuit IDs that contain letter T or t
+                for id1 in ida1:
+                    if "T" in id1:
+                        t3 = False
+                if t1 or (t2 and t3):
+                    mainLineHnd.append(r1[:-1])
+    #
+    if len(mainLineHnd)==0:
+        ma2 = []
+        for i in range(len(brA_res)):
+            r1 = brA_res[i]
+            ida1 = ida[i]
+            naa1 = naa[i]
+            r2 = [r1[0]]
+            for j in range(1,len(naa1)):
+                if "[T]" in naa1[j] or 'T' in ida1[j]:
+                    break
+                else:
+                    r2.append(r1[j])
+            ma2.append(r2)
+        ma2.sort(key=lambda x:len(x))
+        mainLineHnd.append(ma2[len(ma2)-1])
     # check Tap3
     if len(mainLineHnd)>1:
         ma2 = []
@@ -1468,11 +1486,14 @@ def lineComponents_0(hndBr,b2t,typeConsi): # Without XFMR3
     b2 = getEquipmentData([hndBr],BR_nBus2Hnd)[0]
     nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
     typ1  = getEquipmentData([hndBr],BR_nType)[0]
+    flag1  = getEquipmentData([hndBr],BR_nInService)[0]
     if nTap1!=0 and b2t<=0:
-        raise Exception("Impossible to start lineComponents from a Tap bus with no end bus:" + OlxAPI.FullBusName(b1))
+        raise Exception("Impossible to start lineComponents from a Tap bus with no end bus\n\t" + OlxAPI.FullBusName(b1))
     #
+    if flag1!=1:
+        raise Exception("Impossible to start lineComponents from a out-of-service branch\n\t"+fullBranchName_1(hndBr))
     if TC_XFMR3 in typeConsi1:
-        raise Exception("Impossible run lineComponents with XFMR3")
+        raise Exception("Impossible run lineComponents with XFMR3\n\t"+fullBranchName_1(hndBr))
     #
     if typ1 not in typeConsi1:
         return []

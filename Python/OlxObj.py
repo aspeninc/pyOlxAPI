@@ -6,7 +6,7 @@ __copyright__ = "Copyright 2022, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __email__     = "support@aspeninc.com"
 __status__    = "Release candidate"
-__version__   = "2.2.0"
+__version__   = "2.2.1"
 #
 import os
 import OlxAPI
@@ -41,6 +41,8 @@ def toString(v,nRound=5):
     if t==str:
         return "'%s'"%v.replace('\n',' ')
     if t==float:
+        if v>1.0:
+            return str(round(v,nRound))
         s1 ='%.'+str(nRound)+'g'
         return s1 % v
     if t==complex:
@@ -971,9 +973,7 @@ class __DATAABSTRACT__:
             if id1>=0 and id2>=0:
                 s1 = s1[:id1+1]+'TERMINAL'+s1[id2:]
                 tc1 =  __getDatai__(self.__hnd__,OlxAPIConst.BR_nType)
-                dictL = {OlxAPIConst.TC_LINE:' L',OlxAPIConst.TC_DCLINE2:' DC',OlxAPIConst.TC_SCAP:' S',OlxAPIConst.TC_PS:' P',\
-                         OlxAPIConst.TC_XFMR:' T', OlxAPIConst.TC_XFMR3:' X',OlxAPIConst.TC_SWITCH:' W'}
-                s1 += dictL[tc1]
+                s1 += __OLXOBJ_CONST1__[tc1][2]
             return s1
         if option==1:
             if typ==BUS:
@@ -1952,39 +1952,13 @@ class NETWORK:
                     setBusHnd.add(bi.__hnd__)
         return {'BUS': lstBus,'EQUIPMENT':lstEquipment}
     #
-    def findLineSections(self,t0,prt=False):
-        """
-        Purpose: Find all section (LINE,SERIESRC,SWITCH) from a TERMINAL/RLYGROUP
-                All taps are ignored. Close switches are included.
-                Branches out of service are ignored
-        Args:
-            t0: start TERMINAL/RLYGROUP
-                Exception if:
-                    1st Bus (of t0) is a TAP Bus
-                    t0 located on XFMR,XFMR3,SHIFTER
-        return:
-            mainLine  = [[]]     List of all TERMINAL in the main-line of method 1,2,3 in Help 8.9
-                                        METHOD 1: Enter the same name in the Name field of the line’s main segments
-                                        METHOD 2: Include these three characters [T] (or [t]) in the tap lines name
-                                        METHOD 3: Give the tap lines circuit IDs that contain letter T or t
-            remoteBus  = []      List of remote BUSES: two for 2-terminal line and >2 for 3-terminal line
-            remoteRLG  = []      List of all RLYGROUP at the remote end
-        """
-        if type(t0) not in {TERMINAL,RLYGROUP}:
-            raise Exception('OLCase.findLineSection(t0) with t0 is a TERMINAL or RLYGROUP\n\tFound:'+toString(t0))
-        mainLineHnd,remoteBusHnd,remoteRLGHnd = OlxAPILib.findLineSections(t0.HANDLE,prt)
-        mainLine = self.toOBJ(mainLineHnd)
-        remoteBus = self.toOBJ(remoteBusHnd)
-        remoteRLG = self.toOBJ(remoteRLGHnd)
-        return mainLine,remoteBus,remoteRLG
-    #
     def tapLineTool(self,t0,prt=False):
         """
         Purpose: Find main sections of Line and sum impedance(Z0,Z1) and Length
             All taps are ignored. Close switches are included.
             Branches out of service are ignored
         Args:
-            t0: start TERMINAL/RLYGROUP
+            t0: start TERMINAL/RLYGROUP/LINE/BUS/SWITCH/SERIESRC
                 Exception if:
                     1st Bus (of t0) is a TAP Bus
                     t0 located on XFMR,XFMR3,SHIFTER
@@ -2001,8 +1975,49 @@ class NETWORK:
             res['Z0']         = []   List of zero sequence Impedance of the mainLine
             res['Length']     = []   List of sum length of the mainLine
         """
-        if type(t0) not in {TERMINAL,RLYGROUP}:
-            raise Exception('\nOLCase.tapLineTool(t0) with t0 is a TERMINAL or RLYGROUP\n\tFound:'+toString(t0))
+        ty0 = type(t0)
+        se = '\nOLCase.tapLineTool(t0)'
+        if ty0 not in {TERMINAL,RLYGROUP,LINE,SWITCH,SERIESRC,BUS}:
+            se+='\n\tRequired (t0) : TERMINAL,RLYGROUP,LINE,SWITCH,SERIESRC,BUS'
+            se+='\n\tFound         : '+toString(t0)
+            raise Exception(se+'\n\nUnable to continue.')
+        if ty0==BUS:
+            if t0.TAP>0:
+                se+='\n\tt0 is a TAP BUS : '+toString(t0)
+                raise Exception(se+'\n\nUnable to continue.')
+            res = {'mainLine':[],'remoteBus':[],'remoteRLG':[],'Z1':[],'Z0':[],'Length':[]}
+            for t1 in t0.TERMINAL:
+                if t1.FLAG==1 and type(t1.EQUIPMENT) in {LINE,SWITCH,SERIESRC}:
+                    r1 = self.tapLineTool(t1,prt)
+                    for k,v in r1.items():
+                        res[k].extend(v)
+            return res
+        #
+        if ty0 in {LINE,SWITCH,SERIESRC}:
+            ta = t0.TERMINAL
+            b1 = ta[0].BUS1
+            b2 = ta[1].BUS1
+            if b1.TAP==0:
+                t0 = ta[0]
+            elif b2.TAP==0:
+                t0 = ta[1]
+            else:
+                se+='\n\tt0 has 2 TAP BUSes : '+toString(t0)
+                raise Exception(se+'\n\nUnable to continue.')
+        elif ty0==RLYGROUP:
+            t0 = t0.TERMINAL
+        e0 = t0.EQUIPMENT
+        if t0.BUS1.TAP>0:
+            se+='\n\tt0 starts from a TAP BUS : '+toString(t0)
+            raise Exception(se+'\n\nUnable to continue.')
+        if type(e0) not in {LINE,SWITCH,SERIESRC}:
+            se+='\n\tRequired (t0 located on) : LINE,SWITCH,SERIESRC'
+            se+='\n\tFound         : '+toString(e0)
+            raise Exception(se+'\n\nUnable to continue.')
+        if t0.FLAG!=1:
+            se+='\n\tt0 is out-of-service : '+toString(t0)
+            raise Exception(se+'\n\nUnable to continue.')
+        #
         ra = OlxAPILib.tapLineTool(t0.HANDLE,prt)
         res = dict()
         res['mainLine'] = self.toOBJ(ra['mainLineHnd'])
@@ -4555,7 +4570,7 @@ class RLYGROUP(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYGROUP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         res = []
         for h1 in __getRLYGROUP_OBJ__(self,'BUS'):
             res.append(BUS(hnd=h1))
@@ -4628,7 +4643,7 @@ class RLYOCG(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYOCG
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -4688,7 +4703,7 @@ class RLYOCP(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYOCP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -4776,7 +4791,7 @@ class FUSE(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this FUSE
                 BUS[0]          : Bus Local
-                BUS[1],(BUS[2]) : Bus Remote(s) """
+                BUS[1],(BUS[2]) : Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -4828,7 +4843,7 @@ class RLYDSG(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYDSG
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -4896,7 +4911,7 @@ class RLYDSP(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYDSP
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2] : Bus Remote(s) """
+                BUS[1],(BUS[2] : Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -5020,7 +5035,7 @@ class RLYD(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYD
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -5116,7 +5131,7 @@ class RLYV(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RLYV
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus opposite(s) on Equipment """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -5296,7 +5311,7 @@ class RECLSR(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this RECLSR
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -5360,7 +5375,7 @@ class SCHEME(__DATAABSTRACT__):
     def BUS(self):
         """ [BUS] List Buses of this SCHEME
                 BUS[0]         : Bus Local
-                BUS[1],(BUS[2]): Bus Remote(s) """
+                BUS[1],(BUS[2]): Bus Opposite(s) """
         return self.RLYGROUP.BUS
     @property
     def EQUIPMENT(self):
@@ -5533,14 +5548,14 @@ __OLXOBJ_CONST1__ = {\
                 OlxAPIConst.TC_GENW3  :['GENW3',GENW3],\
                 OlxAPIConst.TC_GENW4  :['GENW4',GENW4],\
                 OlxAPIConst.TC_CCGEN  :['CCGEN',CCGEN],\
-                OlxAPIConst.TC_XFMR   :['XFMR',XFMR],\
-                OlxAPIConst.TC_XFMR3  :['XFMR3',XFMR3],\
-                OlxAPIConst.TC_PS     :['SHIFTER',SHIFTER],
-                OlxAPIConst.TC_LINE   :['LINE',LINE],
-                OlxAPIConst.TC_DCLINE2:['DCLINE2',DCLINE2],
+                OlxAPIConst.TC_XFMR   :['XFMR',XFMR,' T'],\
+                OlxAPIConst.TC_XFMR3  :['XFMR3',XFMR3,' X'],\
+                OlxAPIConst.TC_PS     :['SHIFTER',SHIFTER,' P'],
+                OlxAPIConst.TC_LINE   :['LINE',LINE, ' L'],
+                OlxAPIConst.TC_DCLINE2:['DCLINE2',DCLINE2,' DC'],
                 OlxAPIConst.TC_MU     :['MULINE',MULINE],
-                OlxAPIConst.TC_SCAP   :['SERIESRC',SERIESRC],
-                OlxAPIConst.TC_SWITCH :['SWITCH',SWITCH],
+                OlxAPIConst.TC_SCAP   :['SERIESRC',SERIESRC,' S'],
+                OlxAPIConst.TC_SWITCH :['SWITCH',SWITCH,' W'],
                 OlxAPIConst.TC_LOAD   :['LOAD',LOAD],
                 OlxAPIConst.TC_LOADUNIT:['LOADUNIT',LOADUNIT],
                 OlxAPIConst.TC_SHUNT  :['SHUNT',SHUNT],
@@ -6091,17 +6106,19 @@ __OLXOBJ_PARA__['RLYOCG'] = {\
                 'DATEOFF'   :[OlxAPIConst.OG_sOffDate     ,'(str) OC ground relay out of service date'],
                 'DATEON'    :[OlxAPIConst.OG_sOnDate      ,'(str) OC ground relay in service date'],
                 'FLAG'      :[OlxAPIConst.OG_nInService   ,'(int) OC ground relay in-service flag: 1- active; 2- out-of-service'],
-                'RLYGROUP'  :[OlxAPIConst.OG_nRlyGrHnd    ,'(RLYGROUP) OC ground relay group']}
+                'RLYGROUP'  :[OlxAPIConst.OG_nRlyGrHnd    ,'(RLYGROUP) OC ground relay group'],
+                'EQUIPMENT' :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYOCG located on'],
+                'BUS'       :[0,'[BUS] List Buses of this RLYOCG, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_RLYSET__['RLYOCG'] = {\
                 'CT'         :[OlxAPIConst.OG_dCT          ,'(float) OC ground relay CT ratio'],
                 'OPI'        :[OlxAPIConst.OG_nOperateOn   ,'(int) OC ground relay Operate On: 0-3I0; 1-3I2; 2-I0; 3-I2'],
-                'ASYM'       :[OlxAPIConst.OG_nDCOffset    ,'(int) OC ground relay sentitive to DC offset:1-true; 0-false'],
+                'ASYM'       :[OlxAPIConst.OG_nDCOffset    ,'(int) OC ground relay sensitive to DC offset: 1-true; 0-false'],
                 'FLATINST'   :[OlxAPIConst.OG_nFlatDelay   ,'(int) OC ground relay flat definite time delay flag: 1-true; 0-false'],
-                'SGNL'       :[OlxAPIConst.OG_nSignalOnly  ,'(int) OC ground relay signal only: 1-INST;2-OC, 4-DT1'],
-                'OCDIR'      :[OlxAPIConst.OG_nDirectional ,'(int) OC ground relay directional flag: 0=None;1=Fwd.;2=Rev.'],
-                'DTDIR'      :[OlxAPIConst.OG_nIDirectional,'(int) OC ground relay Inst. Directional flag: 0=None;1=Fwd.;2=Rev.'],
-                'POLAR'      :[OlxAPIConst.OG_nPolar       ,'(int) OC ground relay polar option 0=V0,I0;1=V2,I2;2=SEL V2;3=SEL V0'],
+                'SGNL'       :[OlxAPIConst.OG_nSignalOnly  ,'(int) OC ground relay signal only: Example 1-INST; 2-OC; 4-DT1;...'],
+                'OCDIR'      :[OlxAPIConst.OG_nDirectional ,'(int) OC ground relay directional flag: 0-None; 1-Fwd.; 2-Rev.'],
+                'DTDIR'      :[OlxAPIConst.OG_nIDirectional,'(int) OC ground relay Inst. Directional flag: 0=None; 1-Fwd.; 2-Rev.'],
+                'POLAR'      :[OlxAPIConst.OG_nPolar       ,'(int) OC ground relay polar option 0-V0,I0; 1-V2,I2; 2-SEL V2; 3-SEL V0'],
                 'PICKUPTAP'  :[OlxAPIConst.OG_dTap         ,'(float) OC ground relay Pickup (A)'],
                 'TDIAL'      :[OlxAPIConst.OG_dTDial       ,'(float) OC ground relay time dial'],
                 'TIMEADD'    :[OlxAPIConst.OG_dTimeAdd     ,'(float) OC ground relay time adder'],
@@ -6145,14 +6162,16 @@ __OLXOBJ_PARA__['RLYOCP'] = {\
                 'DATEOFF'    :[OlxAPIConst.OP_sOffDate      ,'(str) OC phase relay out of service date'],
                 'DATEON'     :[OlxAPIConst.OP_sOnDate       ,'(str) OC phase relay in service date'],
                 'FLAG'       :[OlxAPIConst.OP_nInService    ,'(int) OC phase relay in-service flag: 1- active; 2- out-of-service'],
-                'RLYGROUP'   :[OlxAPIConst.OP_nRlyGrHnd     ,'(RLYGROUP) OC phase relay group']}
+                'RLYGROUP'   :[OlxAPIConst.OP_nRlyGrHnd     ,'(RLYGROUP) OC phase relay group'],
+                'EQUIPMENT'  :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYOCP located on'],
+                'BUS'        :[0,'[BUS] List Buses of this RLYOCP, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_RLYSET__['RLYOCP'] = {\
                 'CT'         :[OlxAPIConst.OP_dCT           ,'(float) OC phase relay CT ratio'],
                 'CTCONNECT'  :[OlxAPIConst.OP_nByCTConnect  ,'(int) OC phase reley CT connection: 0- Wye; 1-Delta'],
-                'ASYM'       :[OlxAPIConst.OP_nDCOffset     ,'(int) OC phase relay sentitive to DC offset: 1-true; 0-false'],
+                'ASYM'       :[OlxAPIConst.OP_nDCOffset     ,'(int) OC phase relay sensitive to DC offset: 1-true; 0-false'],
                 'FLATINST'   :[OlxAPIConst.OP_nFlatDelay    ,'(int) OC phase relay flat delay: 1-true; 0-false'],
-                'SGNL'       :[OlxAPIConst.OP_nSignalOnly   ,'(int) OC phase relay signal only:  1-INST;2-OC, 4-DT1'],
+                'SGNL'       :[OlxAPIConst.OP_nSignalOnly   ,'(int) OC phase relay signal only: Example 1-INST;2-OC; 4-DT1;...'],
                 'OCDIR'      :[OlxAPIConst.OP_nDirectional  ,'(int) OC phase relay directional flag: 0=None;1=Fwd.;2=Rev.'],
                 'DTDIR'      :[OlxAPIConst.OP_nIDirectional ,'(int) OC phase relay Inst. Directional flag: 0=None;1=Fwd.;2=Rev.'],
                 'POLAR'      :[OlxAPIConst.OP_nPolar        ,'(int) OC_phase relay polar option'],
@@ -6200,7 +6219,9 @@ __OLXOBJ_PARA__['FUSE'] = {\
                 'PACKAGE'   :[OlxAPIConst.FS_nPackage  ,'(int) Fuse Package option'],
                 'LIBNAME'   :[OlxAPIConst.FS_sLibrary  ,'(str) Fuse Library'],
                 'TYPE'      :[OlxAPIConst.FS_sType     ,'(str) Fuse type'],
-                'RLYGROUP'  :[OlxAPIConst.FS_nRlyGrHnd ,'(RLYGROUP) Fuse relay group']}
+                'RLYGROUP'  :[OlxAPIConst.FS_nRlyGrHnd ,'(RLYGROUP) Fuse relay group'],
+                'EQUIPMENT' :[0                        ,'(EQUIPMENT) EQUIPMENT that this FUSE located on'],
+                'BUS'       :[0,'[BUS] List Buses of this FUSE, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_PARA__['RLYDSG'] = {\
                 'ID'          :[OlxAPIConst.DG_sID         ,'(str) DS ground relay name(ID)'],
@@ -6209,7 +6230,9 @@ __OLXOBJ_PARA__['RLYDSG'] = {\
                 'DATEOFF'     :[OlxAPIConst.DG_sOffDate    ,'(str) DS ground relay out of service date'],
                 'DATEON'      :[OlxAPIConst.DG_sOnDate     ,'(str) DS ground relay in service date'],
                 'FLAG'        :[OlxAPIConst.DG_nInService  ,'(int) DS ground relay in-service flag: 1- active; 2- out-of-service'],
-                'RLYGROUP'    :[OlxAPIConst.DG_nRlyGrHnd   ,'(RLYGROUP) DS ground relay group']}
+                'RLYGROUP'    :[OlxAPIConst.DG_nRlyGrHnd   ,'(RLYGROUP) DS ground relay group'],
+                'EQUIPMENT'   :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYDSG located on'],
+                'BUS'         :[0,'[BUS] List Buses of this RLYDSG, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_RLYSET__['RLYDSG'] = {\
                 'DSTYPE'      :[OlxAPIConst.DG_sDSType     ,'(str) DS ground relay type name'],
@@ -6239,7 +6262,9 @@ __OLXOBJ_PARA__['RLYDSP'] = {\
                 'DATEOFF'     :[OlxAPIConst.DP_sOffDate    ,'(str) DS phase relay out of service date'],
                 'DATEON'      :[OlxAPIConst.DP_sOnDate     ,'(str) DS phase relay in service date'],
                 'FLAG'        :[OlxAPIConst.DP_nInService  ,'(int) DS phase relay in-service flag: 1- active; 2- out-of-service'],
-                'RLYGROUP'    :[OlxAPIConst.DP_nRlyGrHnd   ,'(RLYGROUP) DS phase relay group']}
+                'RLYGROUP'    :[OlxAPIConst.DP_nRlyGrHnd   ,'(RLYGROUP) DS phase relay group'],
+                'EQUIPMENT'   :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYDSP located on'],
+                'BUS'         :[0,'[BUS] List Buses of this RLYDSP, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 
 __OLXOBJ_RLYSET__['RLYDSP'] = {\
                 'CT'          :[OlxAPIConst.DP_dCT         ,'(float) DS phase relay CT ratio'],
@@ -6277,7 +6302,9 @@ __OLXOBJ_PARA__['RLYD'] = {\
                 'TLCCVPH'     :[OlxAPIConst.RD_sTLCCurvePh  ,'(str) Differential relay tapped load coordination curve (phase)'],
                 'CTGRP1'      :[OlxAPIConst.RD_nLocalCTHnd1 ,'(RLYGROUP) Differential relay local current input 1'],
                 'RMTE1'       :[OlxAPIConst.RD_nRmeDevHnd1  ,'(EQUIPMENT) Differential relay remote device 1'],
-                'RMTE2'       :[OlxAPIConst.RD_nRmeDevHnd2  ,'(EQUIPMENT) Differential relay remote device 2']}
+                'RMTE2'       :[OlxAPIConst.RD_nRmeDevHnd2  ,'(EQUIPMENT) Differential relay remote device 2'],
+                'EQUIPMENT'   :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYD located on'],
+                'BUS'         :[0,'[BUS] List Buses of this RLYD, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_PARA__['RLYV'] = {\
                 'ID'        :[OlxAPIConst.RV_sID         ,'(str) Voltage relay ID (NAME)'],
@@ -6297,7 +6324,9 @@ __OLXOBJ_PARA__['RLYV'] = {\
                 'OPQTY'     :[OlxAPIConst.RV_nVoltOperate,'(int) Voltage relay operate on voltage option: 1-Phase-to-Neutral; 2- Phase-to-Phase; 3-3V0;4-V1;5-V2;6-VA;7-VB;8-VC;9-VBC;10-VAB;11-VCA'],
                 'OVCVR'     :[OlxAPIConst.RV_sOVCurve    ,'(str) Voltage relay over-voltage element curve'],
                 'UVCVR'     :[OlxAPIConst.RV_sUVCurve    ,'(str) Voltage relay under-voltage element curve'],
-                'RLYGROUP'  :[OlxAPIConst.RV_nRlyGrpHnd  ,'(RLYGROUP) Voltage relay group']}
+                'RLYGROUP'  :[OlxAPIConst.RV_nRlyGrpHnd  ,'(RLYGROUP) Voltage relay group'],
+                'EQUIPMENT' :[0                           ,'(EQUIPMENT) EQUIPMENT that this RLYV located on'],
+                'BUS'       :[0,'[BUS] List Buses of this RLYV, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_PARA__['RECLSR'] = {\
                 'ID'          :[OlxAPIConst.CP_sID         ,'(str) Recloser ID'],
@@ -6327,7 +6356,9 @@ __OLXOBJ_PARA__['RECLSR'] = {\
                 'TIMEMULTF'   :[OlxAPIConst.CP_dTimeMultF  ,OlxAPIConst.CG_dTimeMultF  ,'(float) Recloser-Phase fast curve time multiplier','(float) Recloser-Ground fast curve time multiplier'],
                 'TIMEMULTS'   :[OlxAPIConst.CP_dTimeMultS  ,OlxAPIConst.CG_dTimeMultS  ,'(float) Recloser-Phase slow curve time multiplier','(float) Recloser-Ground slow curve time multiplier'],
                 'FASTTYPE'    :[OlxAPIConst.CP_sTypeFast   ,OlxAPIConst.CG_sTypeFast   ,'(str) Recloser-Phase fast curve','(str) Recloser-Ground fast curve'],
-                'SLOWTYPE'    :[OlxAPIConst.CP_sTypeSlow   ,OlxAPIConst.CG_sTypeSlow   ,'(str) Recloser-Phase slow curve','(str) Recloser-Ground slow curve']}
+                'SLOWTYPE'    :[OlxAPIConst.CP_sTypeSlow   ,OlxAPIConst.CG_sTypeSlow   ,'(str) Recloser-Phase slow curve','(str) Recloser-Ground slow curve'],
+                'EQUIPMENT'   :[0,0,'(EQUIPMENT) EQUIPMENT that this RECLSR located on'],
+                'BUS'         :[0,0,'[BUS] List Buses of this RECLSR, BUS[0]-Bus Local;BUS[1],(BUS[2])-Bus opposite(s) on Equipment']}
 #
 __OLXOBJ_PARA__['SCHEME'] = {\
                 'FLAG'        :[OlxAPIConst.LS_nInService ,'(int) Logic scheme in-service flag: 1- active; 2- out-of-service'],
@@ -7123,7 +7154,7 @@ def __changeRLYSettingOC__(rl,sPara,value):
                 raise TypeError(se)
             #
             id1 = paraCode[2]
-            valo = [0]*8
+            valo = [0]*9
             valo[id1] = value
             #
             val1 = __setValue__(rl.__hnd__,paraCode[0],valo)
@@ -7187,10 +7218,15 @@ def __printRLYSettingOC__(rl,cmt):
         if len(val)>2 :
             if polar in val[1]:
                 v1 = __getRelaySetting__(rl,a1)
-                sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)+'\t'+ val[3]
+                sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)
+                if cmt:
+                    sres+='\t'+ val[3]
         else:
             v1 = __getRelaySetting__(rl,a1)
-            sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)+'\t'+ val[1]
+            sres+= '\n' + a1.ljust(15)+' : '+toString(v1).ljust(15)
+            #sres+= '\n' + ("'%s'"%a1)+':'+(toString(v1)+",").ljust(15)
+            if cmt:
+                sres+='\t'+ val[1]
     return sres
 #
 def __printRLYSettingDS__(rl,cmt):
