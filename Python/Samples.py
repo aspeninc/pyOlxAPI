@@ -8,29 +8,37 @@ __email__ = "support@aspeninc.com"
 __status__ = "Release"
 
 import sys
-#import os.path
 import os
 from ctypes import *
-PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
-PATH_LIB = PATH_FILE
-os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
-sys.path.insert(0, PATH_LIB)
-
 import OlxAPI
 from OlxAPIConst import *
 import OlxAPILib
-
+olxpath   = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15'
 #
 # Command Line INPUTS
 import argparse
 INPUTS = argparse.ArgumentParser(epilog= "")
 INPUTS = argparse.ArgumentParser("\tA collection of code snippets to demo usage of OlxAPI calls.")
-INPUTS.add_argument('-olxpath', metavar='', help = ' (str) Full pathname of the folder, where the ASPEN OlxApi.dll is located', default = "")
+INPUTS.add_argument('-olxpath', metavar='', help = ' (str) Full pathname of the folder, where the ASPEN OlxApi.dll is located', default = olxpath)
 INPUTS.usage = '\n\tsample.py -fi "InputFile.olr"'
 INPUTS.add_argument('-fi' , metavar='', help = '*(str) OLR input file',   default = "")
 INPUTS.add_argument('-fib' , metavar='', help = '(str) OLR input file B',   default = "")
 INPUTS.add_argument('-fo' , metavar='', help = '(str) output file',   default = "")
 ARGVS = INPUTS.parse_known_args()[0]
+
+def testGetObjGraphicData():
+    """Test API GetObjGraphic
+    """
+    buf = (c_int*500)(0)
+    argsGetEquipment = {}
+    argsGetEquipment["tc"] = TC_BUS
+    argsGetEquipment["hnd"] = 0  # Get the first object
+    while (OLXAPI_OK == OlxAPILib.get_equipment(argsGetEquipment)):
+        hnd = argsGetEquipment["hnd"]
+        if OLXAPI_FAILURE == OlxAPI.GetObjGraphicData(hnd,buf):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        sObj1LPF = OlxAPI.decode(OlxAPI.PrintObj1LPF(hnd))
+        print( sObj1LPF + ': x=' + str(buf[0]) + ' y=' + str(buf[1]) )
 
 def testEliminateZZBranch():
     """Test API EliminateZZBranch
@@ -838,14 +846,14 @@ def testFindObj():
         print("hnd= ", hnd, " Bus ", bsNo, " ", bsName, " ", bsKV)
 
     # Test OlxAPI.FindEquipmentByTag
-    tags = c_char_p("tagS")
+    tags = "tagS"
     equType = c_int(0)
     equHnd = (c_int*1)(0)
     count = 0
     while OLXAPI_OK == OlxAPI.FindEquipmentByTag( tags, equType, equHnd ):
         print(OlxAPI.PrintObj1LPF(equHnd[0]))
         count = count + 1
-    print("Objects with tag " + tags.value + ": " + str(count))
+    print("Objects with tag " + tags + ": " + str(count))
     return 0
 
 def testDeleteEquipment(olrFilePath):
@@ -976,12 +984,13 @@ def testOlxAPI():
             raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
         print("File opened successfully: " + olrFilePath)
 
-        testEliminateZZBranch()
+        #testGetObjGraphicData()
+        #testEliminateZZBranch()
         #testGetSetUDF()
         #testFindObjGUID()
         #testFindObj1LPF()
         #testDeleteEquipment(olrFilePath)
-        #testFindObj()
+        testFindObj()
         #testBoundaryEquivalent(olrFilePath)
         #testDoBreakerRating()
         #testGetData()
@@ -1757,6 +1766,7 @@ def testGetSetUDF():
     return 0
 
 def main(argv=None):
+    #ARGVS.fi = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15\\Sample30.OLR'
     #
     # IMPORTANT: Successfull initialization is required before any
     #            other OlxAPI call can be executed.

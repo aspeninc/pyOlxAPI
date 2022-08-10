@@ -7,8 +7,8 @@ __copyright__ = "Copyright 2022, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "Common"
 __email__     = "support@aspeninc.com"
-__status__    = "Release-candidate"
-__version__   = "2.2.5"
+__status__    = "Release"
+__version__   = "2.2.12"
 
 import os,sys
 PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
@@ -25,6 +25,7 @@ if not os.path.isdir(olxpath):
 olxpathpy = 'c:\\ASPENv15TrainingData\\OlxAPI\\Python'
 if not os.path.isdir(olxpathpy):
     olxpathpy = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15\OlxAPI\python'
+olxpathpy = os.path.split(PATH_FILE)[0]
 # INPUTS cmdline ---------------------------------------------------------------
 import argparse
 PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
@@ -100,7 +101,6 @@ def sample_2_Bus(fi):
     print(b1.toString())
     #
     print(b1.NAME,b1.kv,b1.no) # Bus name,kV,Bus Number
-
 #
 def sample_3_Line(fi):
     """
@@ -142,6 +142,11 @@ def sample_3_Line(fi):
     print(l1.toString())
     #
     print('R=',l1.R,' X=',l1.X)            # R, X
+
+    l1 = OlxObj.OLCase.findLINE("[LINE] 1 'GLEN LYN' 132 kV-2 'CLAYTOR' 132 kV 2")
+    print('All MULINE of LINE: '+l1.toString())
+    for mu1 in l1.MULINE:
+        print('\t'+mu1.toString())
 #
 def sample_4_Terminal(fi):
     """
@@ -157,6 +162,15 @@ def sample_4_Terminal(fi):
         print(t1.toString())
     else:
         print('TERMINAL not found')
+
+    #
+    l1 = OlxObj.OLCase.findLINE("[LINE] 1 'GLEN LYN' 132 kV-2 'CLAYTOR' 132 kV 2")
+    t1 = OlxObj.OLCase.findTERMINAL(b1,l1) # find TERMINAl by BUS and EQUIPMENT
+    if t1:
+        print(t1.toString())
+    else:
+        print('TERMINAL not found')
+
     #
     print('\nTERMINALS on ' + b1.toString()+' with CID=1')
     for ti in b1.TERMINAL:
@@ -261,7 +275,7 @@ def sample_7_ClassicalFault_1(fi):
     # new Fault '3LG' & Z
     fs1.fltConn = '3LG'
     fs1.Z = [0.2,0.3]
-    OlxObj.OLCase.simulateFault(fs1,1)
+    OlxObj.OLCase.simulateFault(fs1,0)
     #RESULT
     for r1 in OlxObj.FltSimResult:
         print(r1.FaultDescription)
@@ -275,7 +289,10 @@ def sample_7_ClassicalFault_1(fi):
         print('\tV012 b1   =',r1.voltageSeq(b1))
         print('\tV012 l1   =',r1.voltageSeq(l1))
         #
-        print('\nop,toc    =',r1.optime(ocg,1,1))   # Relay operating time
+        print('\nop,toc    =',r1.optime(ocg,1,1)) # Relay operating time
+        print('Thevenin Zp,Zn,Z0 =',r1.Thevenin)
+        print('MVA =',r1.MVA)
+        print('XR_ratio [X/R,ANSI X/R,R0/X1,X0/X1] =',r1.XR_ratio)
 #
 def sample_8_ClassicalFault_2(fi):
     """
@@ -392,33 +409,23 @@ def sample_11_SEA_2(fi):
         print('\tIABC t2  =',r1.current(t2))
         print('\tIABC t1  =',r1.current(t1))
         print('\tV012 b1  =',r1.voltageSeq(b1))
-
-def sample_12_substation(fi):
-    """
-    Grouper bus by substation
-    """
-    OlxObj.OLCase.open(fi,1) # Load the OLR network file as read-only
-    print('\nsample_12_substation')
-    sub = OlxObj.OLCase.substationGroup()
-    lstBus = sub['BUS']
-    lstEquipment = sub['EQUIPMENT']
-    for i in range(len(lstBus)):
-        print('\nSubstation %i'%(i+1))
-        for b1 in lstBus[i]:
-            print('\t',b1.toString())
-        for e1 in lstEquipment[i]:
-            print('\t',e1.toString())
-def sample_13_tapLine(fi):
-    print('\nsample_13_tapLine')
+#
+def sample_12_tapLine(fi):
+    print('\nsample_12_tapLine')
     #
     OlxObj.OLCase.open(fi,1)
     #
-    t1 = OlxObj.OLCase.findRLYGROUP("[RELAYGROUP] 2 'NEVADA' 132 kV-'Nev/Ariz Tap' 132 kV 1 L")
-    #t1 = OlxObj.OLCase.findRLYGROUP("{0727a192-37d8-440e-9623-4c6ba99451d0}")
+    b1 = OlxObj.OLCase.findBUS('nevada',132)
+##    t1 = OlxObj.OLCase.findRLYGROUP("[RELAYGROUP] 2 'CLAYTOR' 132 kV-'BUS7' 132 kV 1 L")
+##    t1 = OlxObj.OLCase.findRLYGROUP("[RELAYGROUP] 139 'BUS139' 230 kV-12006 'BUS12006' 230 kV 1 L")
+    t1 = OlxObj.OLCase.findRLYGROUP("[RELAYGROUP] 6 'NEVADA' 132 kV-'Nev/Ariz Tap' 132 kV 1 L")
     res = OlxObj.OLCase.tapLineTool(t1) # Not print to stdout all details when research mainLine
     #
     mainLine = res['mainLine']
+    allPath = res['allPath']
+    localBus = res['localBus']
     remoteBus = res['remoteBus']
+    localRLG = res['localRLG']
     remoteRLG = res['remoteRLG']
     Z1 = res['Z1']
     Z0 = res['Z0']
@@ -426,7 +433,9 @@ def sample_13_tapLine(fi):
     #
     for i in range(len(mainLine)):
         print('mainLine: ',i+1)
+        print('\tlocalBus : '+OlxObj.toString(localBus[i]))
         print('\tremoteBus: '+OlxObj.toString(remoteBus[i]))
+        print('\tlocalRLG : '+OlxObj.toString(localRLG[i]))
         print('\tremoteRLG: '+OlxObj.toString(remoteRLG[i]))
         print('\tSegments:')
         for v1 in mainLine[i]:
@@ -434,10 +443,16 @@ def sample_13_tapLine(fi):
         print('\tZ1      : ',OlxObj.toString(Z1[i]))
         print('\tZ0      : ',OlxObj.toString(Z0[i]))
         print('\tLength  : ',OlxObj.toString(Length[i]))
-
+    #
+    for i in range(len(allPath)):
+        print('Segments of path (%i)'%(i+1))
+        for v1 in allPath[i]:
+            print('\t',v1.toString())
+#
 if __name__ == '__main__':
     if ARGVS.fi == '':
        ARGVS.fi =  "c:\\Program Files (x86)\\ASPEN\\1LPFv15\\SAMPLE30.OLR"
+    #ARGVS.fi = 'OlxObj\\sample\\SAMPLE30.OLR'
     if not os.path.isfile(ARGVS.fi):
        print( 'Input file is missing' )
     else:
@@ -453,6 +468,5 @@ if __name__ == '__main__':
         sample_9_SimultaneousFault(ARGVS.fi)
         sample_10_SEA_1(ARGVS.fi)
         sample_11_SEA_2(ARGVS.fi)
-        sample_12_substation(ARGVS.fi)
-        sample_13_tapLine(ARGVS.fi)
+        sample_12_tapLine(ARGVS.fi)
 

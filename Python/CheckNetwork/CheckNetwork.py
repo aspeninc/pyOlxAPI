@@ -1,6 +1,10 @@
 """
 Purpose: CheckNetwork anomalies
 op-1: Check 2 Windings Transformer Config
+    - Check phase shift of all 2-winding transformers with wye-delta connection
+        When a transformer with high side lagging the low side is found,
+        this function converts it to make the high side lead
+    - Check 2 Windings Transformer Config DGD, convert =>GGG
 op-2: Check GEN3,4 VCCS
     1. Under-rated transformers near GenW3, GenW4 or VCCS
     2. Lack of a wye-connected transformer winding in front of a  GenW3, GenW4 or VCCS (unless it is a simple STATCOM)
@@ -25,26 +29,25 @@ __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "yes"
 __email__     = "support@aspeninc.com"
-__status__    = "in dev"
+__status__    = "Release"
 __version__   = "1.2.3"
 
-import os,sys
-PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 
 # IMPORT -----------------------------------------------------------------------
 import logging
 logger = logging.getLogger(__name__)
-import csv,time,math
+import os,sys,csv,time,math
+PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 olxpath = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15'
 olxpathpy = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15\\OlxAPI\\Python'
-olxpathpy = os.path.split(PATH_FILE)[0]
+#olxpathpy = os.path.split(PATH_FILE)[0]
 # INPUTS cmdline ---------------------------------------------------------------
 import argparse
 PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
 PARSER_INPUTS.usage = 'Check network anomalies'
-PARSER_INPUTS.add_argument('-op'  , help = '*(int) operation 1-Check XFMR; 2-GEN34 VCCS; 3-Check Duplicate (CID, BusNumber); 4-Check Line; 5-Check Memo',default = 0, type=int,nargs='+', metavar='')
-PARSER_INPUTS.add_argument('-fi'  , help = '*(str) OLR file path', default = '',type=str,metavar='')
-PARSER_INPUTS.add_argument('-fo', help = ' (str) Path name out file',default = "", type=str, metavar='')
+PARSER_INPUTS.add_argument('-op' , help = '*(int) operation 0-Check ALL; 1-Check XFMR; 2-GEN34 VCCS; 3-Check Duplicate (CID, BusNumber); 4-Check Line; 5-Check Memo',default = 0, type=int,nargs='+', metavar='')
+PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR file path', default = '',type=str,metavar='')
+PARSER_INPUTS.add_argument('-fo' , help = ' (str) Path name out file',default = "", type=str, metavar='')
 PARSER_INPUTS.add_argument('-olxpath' , help = ' (str) Full pathname of the folder, where the ASPEN olxapi.dll is located',default = olxpath,type=str,metavar='')
 PARSER_INPUTS.add_argument('-olxpathpy' , help = ' (str) Full pathname of the folder where the OlxAPI Python wrapper OlxAPI.py and relevant libraries are located',default = olxpathpy,type=str,metavar='')
 PARSER_INPUTS.add_argument('-demo', help = ' (int) demo [0-ignore, 1-run demo]', default = 0,type=int,metavar='')
@@ -57,14 +60,20 @@ try:
     import AppUtils
     from OlxObj import *
 except:
-    raise Exception('\nPlease check in folder olxpathpy:"%s"\n\tnot found OlxAPI Python wrapper OlxAPI.py and relevant libraries'%ARGVS.pyolxpath)
+    raise Exception('\nPlease check in folder olxpathpy:"%s"\n\tnot found OlxAPI Python wrapper OlxAPI.py and relevant libraries'%ARGVS.olxpathpy)
 
 #
 def run_demo():
-    if ARGVS.demo ==1:
-        ARGVS.fi = AppUtils.getASPENFile(olxpath,'SAMPLE30.OLR')
-        ARGVS.op = [1,2,3,4,5]
-        run()
+    if ARGVS.demo==1:
+        ft = PATH_FILE+ '\\sample\\CN01.OLR'
+        if os.path.isfile(ft):
+            ARGVS.fi = ft
+        else:
+            ARGVS.fi = AppUtils.getASPENFile(olxpath,'SAMPLE30.OLR')
+        choice = AppUtils.ask_run_demo(PY_FILE,0,ARGVS.fi,'')
+        if choice=="yes":
+            ARGVS.op = [0]
+            run()
     else:
         AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1])
 #
@@ -112,7 +121,6 @@ class CHECK_DUPLICATE:
         Check: Buses contain multiple load units with the same ID
         """
         ec = 'E21'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Buses contain multiple load units with the same ID'])
         title = [ec,'BUS ID','PARAMETER','VALUE','CHANGED TO']
         la = OLCase.LOAD
@@ -128,13 +136,13 @@ class CHECK_DUPLICATE:
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Buses contain multiple load units with the same ID',len(res)])
     #
     def check_Genunit(self):
         """
         Check: Buses contain multiple Gen units with the same ID
         """
         ec = 'E22'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Buses contain multiple Generator units with the same ID'])
         title = [ec,'BUS ID','PARAMETER','VALUE', 'CHANGED TO']
         ga = OLCase.GEN
@@ -150,13 +158,13 @@ class CHECK_DUPLICATE:
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Buses contain multiple Generator units with the same ID',len(res)])
     #
     def check_Shuntunit(self):
         """
         Check: Buses contain multiple Shunt units with the same ID
         """
         ec = 'E23'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Buses contain multiple Shunt units with the same ID'])
         title = [ec,'BUS ID','PARAMETER','VALUE', 'CHANGED TO']
         ga = OLCase.SHUNT
@@ -172,13 +180,13 @@ class CHECK_DUPLICATE:
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Buses contain multiple Shunt units with the same ID',len(res)])
     #
     def checkBusNumber(self):
         """
         Check: Buses have the same non-zero bus number
         """
         ec = 'E24'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Buses have the same non-zero bus number'])
         title = [ec,'BUS ID','PARAMETER','VALUE','CHANGED TO']
         ba = OLCase.BUS
@@ -212,6 +220,7 @@ class CHECK_DUPLICATE:
                     res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Buses have the same non-zero bus number',len(res)])
     #
     def __changeBusNumber(bus,bn):
         k = 0
@@ -258,7 +267,6 @@ class CHECK_GENW34_VCCS:
         Check: Under-rated transformers near GenW3, GenW4 or VCCS
         """
         ec = 'E11'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Check Under-rated transformers near GenW3+GenW4+VCCS'])
         title = [ec,'GEN ID','XFMR ID','MVA rating Gen','MVA StepUp Transf']
         res = []
@@ -270,28 +278,61 @@ class CHECK_GENW34_VCCS:
                 mva_i = gi.UNITS*gi.MVA
             #
             x2a = b1.XFMR
-            mvaX2 = 0
-            x2s = ''
+            x3a = b1.XFMR3
+            mvaX = 0
+            xs = ''
             for x2i in x2a:
-                mvaX2 += x2i.MVA1
-                x2s += x2i.toString()+' ; '
-            x2s = x2s[:-2]
+                ma = max(x2i.MVA1,x2i.MVA2,x2i.MVA3)
+                if ma>0:
+                    mvaX += ma
+                else:
+                    mbase = x2i.BASEMVA
+                    if mbase!=100.0:
+                        mvaX += ma
+                    else:
+                        xpu = x2i.X
+                        if xpu>0.2:
+                            mvaX += 100/(xpu/0.2)
+                        elif xpu<0.05:
+                            mvaX += 100/(0.05/xpu)
+                        else:
+                            mvaX +=100
+                xs += x2i.toString()+' ; '
+            for x3i in x3a:
+                ma = max(x3i.MVA1,x3i.MVA2,x3i.MVA3)
+                if ma>0:
+                    mvaX += ma
+                else:
+                    mbase = x3i.BASEMVA
+                    if mbase!=100.0:
+                        mvaX += ma
+                    else:
+                        xpu = x3i.XPS
+                        if xpu>0.2:
+                            mvaX += 100/(xpu/0.2)
+                        elif xpu<0.05:
+                            mvaX += 100/(0.05/xpu)
+                        else:
+                            mvaX +=100
+                #
+                xs += x3i.toString()+' ; '
+            xs = xs[:-2]
             #
-            if len(x2a)==0:
-                r1 = [ec, gi.toString(), 'Not Found XFMR', str(round(mva_i,1)), str(round(mvaX2,1))]
+            if len(x2a)==0 and len(x3a)==0:
+                r1 = [ec, gi.toString(), 'None', str(round(mva_i,1)), str(round(mvaX,1))]
                 res.append(r1)
-            elif mvaX2<mva_i:
-                r1 = [ec, gi.toString(), x2s, str(round(mva_i,1)), str(round(mvaX2,1))]
+            elif mvaX<mva_i:
+                r1 = [ec, gi.toString(), xs, str(round(mva_i,1)), str(round(mvaX,1))]
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Check Under-rated transformers near GenW3+GenW4+VCCS',len(res)])
     #
     def check2(self):
         """
         Lack of a wye-connected transformer winding in front of a GenW3+GenW4+VCCS (unless it is a simple STATCOM)
         """
         ec = 'E12'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Lack of a wye-connected transformer winding in front of a GenW3+GenW4+VCCS (unless it is a simple STATCOM)'])
         title = [ec,'GEN ID', 'XFMR ID','Connections StepUp Transf']
         #
@@ -338,6 +379,7 @@ class CHECK_GENW34_VCCS:
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Lack of a wye-connected transformer winding in front of a GenW3+GenW4+VCCS (unless it is a simple STATCOM)',len(res)])
     #
     def check3(self):
         """
@@ -345,7 +387,6 @@ class CHECK_GENW34_VCCS:
         """
         ec = 'E13'
         vc = 1.0
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Have significant prefault MW generation from GenW3+GenW4+VCCS when there are no loads in the network'])
         title = [ec,'GEN ID','MW generation']
         #
@@ -376,9 +417,12 @@ class CHECK_GENW34_VCCS:
                 r1 = [ec,gi.toString(),str(round(m1,1))]
                 res.append(r1)
         # finish
+        nc =0
         if res and mwgen> ma:
             self.fwriter.writerow([ec, 'sumGen='+str(round(mwgen,1)),'sumLoad='+str(round(ma,1))])
             writeRes(res,self.fwriter,title)
+            nc = len(res)
+        self.fwriter.writerow(['COUNT','Have significant prefault MW generation from GenW3+GenW4+VCCS when there are no loads in the network',nc])
     #
     def __testFunc4(self,ba,i,listBus):
         for b1 in ba:
@@ -393,7 +437,6 @@ class CHECK_GENW34_VCCS:
         GenW3+GenW4+VCCS units that are connected with short lines or switches
         """
         ec = 'E14'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'GenW3+GenW4+VCCS units that are connected with short lines or switches'])
         title = [ec, 'GEN ID']
         #
@@ -443,6 +486,7 @@ class CHECK_GENW34_VCCS:
                 res.append(r1)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','GenW3+GenW4+VCCS units that are connected with short lines or switches',len(res)])
 #
 class CHECK_LINE:
     def __init__(self,fwriter):
@@ -453,7 +497,6 @@ class CHECK_LINE:
         Some line type field text contains leading and trailing blank spaces
         """
         ec = 'E31'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Some line type field text contains leading and trailing blank spaces'])
         title = [ec,'LINE ID','PARAMETER','VALUE','CHANGED TO']
         la = OLCase.LINE
@@ -469,12 +512,12 @@ class CHECK_LINE:
                     l1.postData()
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Some line type field text contains leading and trailing blank spaces',len(res)])
     #
     def checkLineRX(self):
         res = []
         title = ''
         ec = 'E32'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Some line have RX=0 or R0X0=0'])
         title = [ec,'LINE ID','PARAMETER','VALUE','CHANGED TO']
         la = OLCase.LINE
@@ -501,6 +544,7 @@ class CHECK_LINE:
                 res.append(vi)
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Some line have R_X=0 or R0_X0=0',len(res)])
 #
 class CHECK_XFMR:
     def __init__(self,fwriter):
@@ -509,7 +553,6 @@ class CHECK_XFMR:
     def checkConfig(self):
         ec = 'E1'
         listCheck = {'DGD'}
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Check 2 Windings Transformer Config'])
         title = [ec,'OBJ ID','PARAMETER','VALUE','CHANGED TO']
         res = []
@@ -523,7 +566,30 @@ class CHECK_XFMR:
                 x2.CONFIGST = 'G'
                 x2.postData()
         #
+        for x2 in OLCase.XFMR:
+            configA = x2.CONFIGP
+            configB = x2.CONFIGS
+            configC = x2.CONFIGST
+            tapA = x2.PRITAP
+            tapB = x2.SECTAP
+            c1 = configA+configB+configC
+            # low - hight  =>  low - hight
+            #   G   - D             G  - E
+            if (tapA<tapB) and configA=="G" and configB=="D":
+                x2.CONFIGS = 'E'
+                x2.postData()
+                vi = ['E1',x2.toString().ljust(65),'CONFIG',c1 ,configA+x2.CONFIGS+configC]
+                res.append(vi)
+            # low - small  =>  low - small
+            #  G    - E              G - D
+            if (tapA>tapB) and configA=="G" and configB=="E":
+                x2.CONFIGS = 'D'
+                x2.postData()
+                vi = ['E1',x2.toString().ljust(65),'CONFIG',c1 ,configA+x2.CONFIGS+configC]
+                res.append(vi)
+        #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Check 2 Windings Transformer Config',len(res)])
 #
 class CHECK_MEMO:
     def __init__(self,fwriter):
@@ -544,7 +610,6 @@ class CHECK_MEMO:
         Memo text contains leading and trailing blank spaces and tab characters
         """
         ec = 'E41'
-        self.fwriter.writerow([])
         self.fwriter.writerow([ec,'Memo text contains leading and trailing blank spaces and tab characters'])
         title = [ec,'OBJ ID','PARAMETER','VALUE','CHANGED TO']
         res = []
@@ -585,6 +650,7 @@ class CHECK_MEMO:
                             break
         #
         writeRes(res,self.fwriter,title)
+        self.fwriter.writerow(['COUNT','Memo text contains leading and trailing blank spaces and tab characters',len(res)])
 #
 def run():
     if not AppUtils.checkInputOLR(ARGVS.fi,PY_FILE,PARSER_INPUTS):
@@ -594,7 +660,7 @@ def run():
         op = [ARGVS.op]
     else:
         op = ARGVS.op
-    vd = {1:'-Check XFMR',2:'-GEN34 VCCS',3:'-Check Duplicate (CID, BusNumber)',4:'-Check Line',5:'-Check Memo'}
+    vd = {0:'Check All',1:'-Check XFMR',2:'-GEN34 VCCS',3:'-Check Duplicate (CID, BusNumber)',4:'-Check Line',5:'-Check Memo'}
     for op1 in op:
         if op1 not in vd.keys():
             se ='ValueError of op='+str(op1)
@@ -609,7 +675,9 @@ def run():
     f1 = open(fr, "w")
     fwriter = csv.writer(f1,quotechar="'", lineterminator="\n")
     fwriter.writerow(['','CheckNetwork version=%s Date:%s'%(__version__,time.asctime())])
-    fwriter.writerow(['','OLR file:%s'%ARGVS.fi])
+    fwriter.writerow(['','OLR file:%s'% os.path.abspath(ARGVS.fi)])
+    fwriter.writerow([])
+    fwriter.writerow(['CCODE','Details'])
     #
     if (0 in op) or (1 in op):
         cx = CHECK_XFMR(fwriter)
@@ -643,6 +711,10 @@ def run():
     f1.close()
     print('\nChecking report:',fr)
     print('Updated network:',fo)
+    # AppUtils.launch_excel(fr)
+    AppUtils.launch_notepad(fr)
+    AppUtils.launch_OneLiner(fo,olxpath=ARGVS.olxpath)
+
 #
 def main():
     AppUtils.logger2File(PY_FILE,version = __version__)
@@ -654,8 +726,9 @@ def main():
     run()
 #
 if __name__ == '__main__':
-##    ARGVS.op = 1
+##    ARGVS.op = [0]
 ##    ARGVS.fi = 'sample\\CN01.OLR'
+##    ARGVS.fi = 'sample\\XFMRConn.OLR'
     # ARGVS.fi = 'sample\\ieee9_w4.OLR'
     # ARGVS.fi = 'sample\\CN02.OLR'
     # ARGVS.fi = 'sample\\BIGTEST1_0Relay.OLR'
@@ -665,7 +738,7 @@ if __name__ == '__main__':
 ##    ARGVS.fi = 'sample\\ECIM_5tierNew_anon_iniCN_deleteSw.OLR'
 ##    ARGVS.fi = 'sample\\S01.OLR'
 ##    ARGVS.fi = 'sample\\problem_x2.olr'
-
+##    ARGVS.demo = 1
     try:
         main()
         AppUtils.markerSucces(ARGVS.opath)

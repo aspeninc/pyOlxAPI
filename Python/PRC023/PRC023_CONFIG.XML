@@ -1,0 +1,10 @@
+<PRC023_CONFIG>
+    <ROW NAME="Line thermal rating"   VALUE="C" CMT="Line thermal rating: A or B or C or D"/>
+    <ROW NAME="Line 15-minute rating" VALUE="D" CMT="Line 15-minute rating: A or B or C or D"/>
+    <ROW NAME="Transformer nameplate rating" VALUE="MVA2" CMT="Transformer nameplate rating: MVA1 or MVA2 or MVA3"/>
+    <ROW NAME="Transformer emergency rating" VALUE="MVA3" CMT="Transformer emergency rating: MVA1 or MVA2 or MVA3"/>
+    <ROW NAME="Series capacitor emergency rating"  VALUE="RATING" CMT="User-defined field for series capacitor emergency rating"/>
+    <ROW NAME="TAGS" VALUE="PRC-023" CMT="Tags for equipment in kV range: 0-200"/>
+	<ROW NAME="AREA" VALUE="" CMT="Area range. e.g 1,2,4-10 ('' for entire network)"/>
+	<ROW NAME="ZONE" VALUE="" CMT="Zone range. e.g 1,4,4-10 ('' for entire network)"/>
+</PRC023_CONFIG>
