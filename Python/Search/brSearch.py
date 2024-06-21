@@ -4,11 +4,11 @@ Purpose: Test branch search function
 """
 from __future__ import print_function
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced Systems for Power Engineering Inc."
+__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
-__version__   = "1.1.1"
+__version__   = "0.1.1"
 __email__     = "support@aspeninc.com"
-__status__    = "Release"
+__status__    = "In development"
 
 # IMPORT -----------------------------------------------------------------------
 import sys,os,time
@@ -42,44 +42,37 @@ ARGVS = PARSER_INPUTS.parse_args()
 
 def unit_test():
     sres = "\nUNIT TEST: " + PY_FILE +"\n"
-    ARGVS.fi = os.path.join (PATH_FILE, "SAMPLE30_1.OLR")
-    OlxAPILib.open_olrFile(ARGVS.fi,readonly=1)
-    sres += "OLR file:" + os.path.basename(ARGVS.fi)
+    ARGVS.fi = "SEARCH.OLR"
+    ARGVS.gui = 0
     #
-    bs = OlxAPILib.BranchSearch(gui=0)
+    ARGVS.na1 , ARGVS.kv1 = "glen lyn",132
+    ARGVS.na2 , ARGVS.kv2 = "claytor",132
+    sres += run()
     #
-    bs.setBusNameKV1("glen lyn",132)
-    bs.setBusNameKV2("claytor",132)
-    br = bs.runSearch()
-    sres += "\n\n"+bs.string_result()
-
+    ARGVS.cid = "1"
+    sres += run()
     #
-    bs.setCktID("1")
-    br = bs.runSearch()
-    sres += "\n\n" + bs.string_result()
+    ARGVS.na1, ARGVS.kv1, ARGVS.na2 ,ARGVS.kv2 = "",0,"",0
+    ARGVS.nu1, ARGVS.nu2 = 12,15
+    ARGVS.cid = ""
+    sres += run()
     #
-    bs.setBusNum1(12)
-    bs.setBusNum2(15)
-    bs.setCktID("")
-    br = bs.runSearch()
-    sres += "\n\n" + bs.string_result()
+    ARGVS.cid = "2"
+    sres += run()
     #
-    bs.setCktID("2")
-    br = bs.runSearch()
-    sres += "\n\n" + bs.string_result()
+    ARGVS.nbr = "/Nev"
+    sres += run()
     #
-    bs.setNameBranch("/Nev")
-    br = bs.runSearch()
-    sres += "\n\n" + bs.string_result()
-    #
-    bs.setNameBranch("Nev/Araz")
-    br = bs.runSearch()
-    sres += "\n\n" + bs.string_result()
+    ARGVS.nbr = "Nev/Araz"
+    sres += run()
     #
     print(sres)
     OlxAPILib.unit_test_compare(PATH_FILE,PY_FILE,sres)
 #
 def run():
+    sres  = "\nRun : " + PY_FILE
+    sres += "\nOLR file : " + os.path.basename(ARGVS.fi) +"\n"
+    #
     OlxAPILib.open_olrFile(ARGVS.fi,readonly=1)
     bs = OlxAPILib.BranchSearch(gui=ARGVS.gui)
     #
@@ -88,16 +81,19 @@ def run():
     bs.setBusNum2(ARGVS.nu2)
     bs.setBusNameKV2(ARGVS.na2 , ARGVS.kv2)
     bs.setCktID(ARGVS.cid)
+    bs.setNameBranch(ARGVS.nbr)
     #
     bhnd = bs.runSearch()
     #
-    print(bs.string_result())
+    sres += bs.string_result()
+    return sres
 #
 if __name__ == '__main__':
-    if (ARGVS.ut ==1):
+    if ARGVS.ut ==1:
         unit_test()
     else:
-        run()
+        sr = run()
+        print(sr)
 
 
 

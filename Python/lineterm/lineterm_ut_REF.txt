@@ -1,0 +1,12 @@
+UNIT TEST: lineterm.py
+OLR file: LINETERM.OLR
+
+Selected Relay Group:[RELAYGROUP] 5 'FIELDALE' 132 kV-'BUS3' 132 kV 1 L
+Remote groups (2):
+	      BUS4               132.kV -       BUS3               132.kV 1 L Clav/Fiel
+	    2 CLAYTOR            132.kV -       BUS7               132.kV 1 L Clav/Fiel
+
+
+Selected Relay Group:[RELAYGROUP] 2 'CLAYTOR' 132 kV-6 'NEVADA' 132 kV 1 L
+Remote group (1):
+	    7 OHIO               132.kV -     6 NEVADA             132.kV 1 L Nev/Ohio

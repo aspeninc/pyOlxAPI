@@ -1,39 +1,33 @@
 """
-Purpose:  Check phase shift of all 2-winding transformers with wye-delta connection.
+Purpose:  Check the phase shift across all 2-winding transformers with wye-delta connection.
           When a transformer with high side lagging the low side is found,
-          this function converts it to make the high side lead.
+          this script modifies the delta side to make the high side leads.
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "Yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.2"
+__version__   = "2.1.0"
 
-import sys,os
-PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
-PATH_LIB = os.path.split(PATH_FILE)[0]
-if PATH_LIB not in sys.path:
-    os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
-    sys.path.insert(0, PATH_LIB)
 
-import OlxAPI
-import OlxAPILib
-from OlxAPIConst import *
+# IMPORT -----------------------------------------------------------------------
+from OlxObj import *
 import AppUtils
+import os
+PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 
-# INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = AppUtils.iniInput(usage=
-         "\n\tCheck phase shift of all 2-winding transformers with wye-delta connection\
+# INPUT Command Line Arguments
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.usage = "\n\tCheck phase shift of all 2-winding transformers with wye-delta connection\
                         \n\tWhen a transformer with high side lagging the low side is found,\
-                        \n\tthis function converts it to make the high side lead")
-#
-PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR input file path', default = '',type=str,metavar='')
-PARSER_INPUTS.add_argument('-fo' , help = ' (str) OLR corrected file path',default = '',type=str,metavar='')
-#
-ARGVS = AppUtils.parseInput(PARSER_INPUTS,demo=1)
+                        \n\tthis function converts it to make the high side lead"
+PARSER_INPUTS.add_argument('-demo', help = ' (int) demo [0-ignore, 1-run demo]', default = 0,type=int,metavar='')
+PARSER_INPUTS.add_argument('-fo'  , help = ' (str) OLR corrected file path',default = '',type=str,metavar='')
+ARGVS = PARSER_INPUTS.parse_known_args()[0]
 
 # CORE--------------------------------------------------------------------------
 def run():
@@ -42,112 +36,72 @@ def run():
           When a transformer with high side lagging the low side is found,
           this function converts it to make the high side lead.
 
-        Args :
-            None
         Returns:
             string result
             OLR corrected file
-
-        Raises:
-            OlrxAPIException
     """
-    #
-    if not AppUtils.checkInputOLR(ARGVS.fi,PY_FILE,PARSER_INPUTS):
-        return
-    #
-    OlxAPILib.open_olrFile_1(ARGVS.olxpath,ARGVS.fi,readonly=1)
-    s1 = ""
-    # get all xfmr
-    x2a = OlxAPILib.getEquipmentHandle(TC_XFMR)
-    kd = 0
-    for x1 in x2a:
-        configA = OlxAPILib.getEquipmentData([x1],XR_sCfg1)[0]
-        configB = OlxAPILib.getEquipmentData([x1],XR_sCfg2)[0]
-        tapA =  OlxAPILib.getEquipmentData([x1],XR_dTap1)[0]
-        tapB =  OlxAPILib.getEquipmentData([x1],XR_dTap2)[0]
-        #
-        test = False
+    OLCase.checkInit(PY_FILE) # check if ASPEN OLR file is opened
 
-        # small - hight  =>  small - hight
-        #   G   - D             G  - E
-        if (tapA<tapB) and configA=="G" and configB=="D":
-            test = True
-            # set
-            OlxAPILib.setData(x1,XR_sCfg2,"E")
-            # validation
-            OlxAPILib.postData(x1)
+    #
+    x2a = []
+    for x2 in OLCase.XFMR: #loop all XFMR
+        configP = x2.CONFIGP
+        configS = x2.CONFIGS
+        tapP = x2.PRITAP
+        tapS = x2.SECTAP
 
-        # hight - small  =>  hight - small
-        #  G    - E              G - D
-        if (tapA>tapB) and configA=="G" and configB=="E":
-            test = True
-            # set
-            OlxAPILib.setData(x1,XR_sCfg2,"D")
-            # validation
-            OlxAPILib.postData(x1)
-        #
-        if test:
-             kd += 1
-             s1 += '\n'+str(kd).ljust(5)  + OlxAPILib.fullBranchName(x1)
+        # low - hight  =>  low - hight
+        #   G - D            G - E
+        if (tapP<tapS) and configP=='G' and configS=='D':
+            x2.CONFIGS = 'E' # set data
+            x2.postData()    # post data
+            x2a.append(x2)
+
+        # hight-low   =>  hight-low
+        #    G - E           G - D
+        if (tapP>tapS) and configP=='G' and configS=='E':
+            x2.CONFIGS = 'D' # set data
+            x2.postData()    # post data
+            x2a.append(x2)
     #
-    if kd>0:
-        s2 = "Fixed (" + str(kd) + ") wye-delta transformers such that the high side leads the low side:"
-    else:
-        s2 = "All wye-delta transformers in this OLR file have phase shift with high-side leading low-side."
-    #
-    print(s2+s1)
-    #
-    if kd>0:
-        ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo , fi=ARGVS.fi , subf='' , ad='_res' , ext='.OLR')
-        #
-        OlxAPILib.saveAsOlr(ARGVS.fo)
-        if ARGVS.ut==0:
-            print("All corrects had been saved in:\n" + ARGVS.fo)
-            AppUtils.launch_OneLiner(ARGVS.fo)
-    #
-    return s2+s1
+    if len(x2a)==0:
+        s1 = "All wye-delta transformers in this OLR file have the correct phase shift of the high-side leading the low-side."
+        AppUtils.gui_info(PY_FILE, s1)
+        return s1
+
+    s1 = "Fixed (%i) wye-delta transformers to make the high side lead the low side:\n"%len(x2a)
+    for i in range(len(x2a)):
+        s1 += '\n'+str(i+1).ljust(5)  + x2a[i].toString()
+    AppUtils.gui_info(PY_FILE, s1)
+
+    ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo , fi=OLCase.olrFile , subf='' , ad='_res' , ext='.OLR')
+    OLCase.save(ARGVS.fo)
+    return s1
+
 #
 def run_demo():
     if ARGVS.demo==1:
-        ARGVS.fi = AppUtils.getASPENFile(PATH_FILE,'SAMPLE30.OLR')
-        ARGVS.fo = AppUtils.get_file_out(fo='' , fi=ARGVS.fi , subf='' , ad='_'+os.path.splitext(PY_FILE)[0]+'_demo' , ext='.OLR')
+        fi = PATH_FILE+'\\XFMRConn.OLR'
+        OLCase.open(fi,1)
         #
-        choice = AppUtils.ask_run_demo(PY_FILE,ARGVS.ut,ARGVS.fi,'')
-        if choice=="yes":
+        sMain = "\nOLR file: " + fi
+        sMain+= "\n\nDo you want to run this demo (Y/N)?"
+        choice = AppUtils.gui_askquestion(PY_FILE+' Demo',sMain)
+        if choice=='YES':
             return run()
     else:
-        AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1])
-#
-def unit_test():
-    ARGVS.fi = os.path.join (PATH_FILE, "XFMRConn.OLR")
-    sres = "OLR file: "+os.path.basename(ARGVS.fi) +"\n"
-    sres+= run()
-    #
-    s1 = ARGVS.fi
-    ARGVS.fi = ARGVS.fo
-    sres +="\nRe-check\n"
-    sres += "OLR file: "+os.path.basename(ARGVS.fi) +"\n"
-    sres+= run()
-    #
-    OlxAPI.CloseDataFile()
-    AppUtils.deleteFile(ARGVS.fi)
-    return AppUtils.unit_test_compare(PATH_FILE,PY_FILE,sres)
+        AppUtils.demo_notFound(PY_FILE, ARGVS.demo, [1],gui_err=1)
 
-#
+
 def main():
-    if ARGVS.ut>0:
-        return unit_test()
-    if ARGVS.demo>0:
+    if ARGVS.demo!=0:
         return run_demo()
     run()
-#
+
+
 if __name__ == '__main__':
-    # ARGVS.ut = 1
-    # ARGVS.demo = 1
-    try:
-        main()
-    except Exception as err:
-        AppUtils.FinishException(PY_FILE,err)
+    main()
+
 
 
 

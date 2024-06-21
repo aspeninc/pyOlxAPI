@@ -1,7 +1,7 @@
 # pyOlxAPI
-Sample ASPEN OlxAPI Python apps for power system studies
+Sample ASPEN OlxAPI Python apps for power system studies using ASPEN OneLiner
 
-    Copyright (c) 2022 Advanced Systems for Power Engineering (ASPEN), Inc.
+    Copyright (c) 2024 Advanced Systems for Power Engineering (ASPEN), Inc.
 
     Permission is hereby granted, free of charge, to any person obtaining
     a copy of this software and associated documentation files (the "Software"),
@@ -21,6 +21,3 @@ Sample ASPEN OlxAPI Python apps for power system studies
     TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
     OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Getting started tutorial:
-
-https://docs.google.com/presentation/d/1h52xgLZrxG_8hsj00w_MPAMkQou_MZ_KehS0JWmLeus/edit?usp=sharing

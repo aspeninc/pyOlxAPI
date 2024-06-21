@@ -4,11 +4,11 @@ Purpose: Test bus search function
 """
 from __future__ import print_function
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced Systems for Power Engineering Inc."
+__copyright__ = "Copyright 2020, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
-__version__   = "1.1.1"
+__version__   = "0.1.1"
 __email__     = "support@aspeninc.com"
-__status__    = "Release"
+__status__    = "In development"
 
 # IMPORT -----------------------------------------------------------------------
 import sys,os,time
@@ -34,49 +34,40 @@ ARGVS = PARSER_INPUTS.parse_args()
 
 def unit_test():
     sres = "\nUNIT TEST: " + PY_FILE +"\n"
-    ARGVS.fi = os.path.join (PATH_FILE, "SAMPLE30_1.OLR")
-    sres += "OLR file:" + os.path.basename(ARGVS.fi) + "\n"
+    ARGVS.fi = "SEARCH.OLR"
+    ARGVS.gui = 0
     #
-    OlxAPILib.open_olrFile(ARGVS.fi,readonly=1)
+    ARGVS.na , ARGVS.kv = "al",32
+    sres +=run()
     #
-    bs = OlxAPILib.BusSearch(gui=0)
+    ARGVS.na , ARGVS.kv = "alz",32
+    sres +=run()
     #
-    bs.setBusNameKV("al",32)
-    bhnd = bs.runSearch()
-    sres += "\n" + bs.stringResult()
+    ARGVS.na , ARGVS.kv = "etc",100
+    sres +=run()
     #
-    bs.setBusNameKV("alz",32)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
+    ARGVS.na , ARGVS.kv = "nhs",33
+    sres +=run()
     #
-    bs.setBusNameKV("etc",100)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
+    ARGVS.na , ARGVS.kv = "nhs",132
+    sres +=run()
     #
-    bs.setBusNameKV("nhs",33)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
+    ARGVS.na , ARGVS.kv = "jj",0
+    sres +=run()
     #
-    bs.setBusNameKV("nhs",132)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
-
-    bs.setBusNameKV("jj",0)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
+    ARGVS.nu, ARGVS.na , ARGVS.kv = 25,"",0
+    sres +=run()
     #
-    bs.setBusNumber(25)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
-    #
-    bs.setBusNumber(250)
-    bhnd = bs.runSearch()
-    sres += "\n\n" + bs.stringResult()
+    ARGVS.nu, ARGVS.na , ARGVS.kv = 250,"",0
+    sres +=run()
     print(sres)
     #
     OlxAPILib.unit_test_compare(PATH_FILE,PY_FILE,sres)
 #
 def run():
+    sres  = "\nRun : " + PY_FILE
+    sres += "\nOLR file : " + os.path.basename(ARGVS.fi) +"\n"
+
     OlxAPILib.open_olrFile(ARGVS.fi,readonly=1)
     bs = OlxAPILib.BusSearch(gui=ARGVS.gui)
     #
@@ -85,13 +76,15 @@ def run():
     #
     bhnd = bs.runSearch()
     #
-    print(bs.stringResult())
+    sres += bs.stringResult()
+    return sres
 
 if __name__ == '__main__':
-    if (ARGVS.ut ==1):
+    if ARGVS.ut ==1:
         unit_test()
     else:
-        run()
+        sr =run()
+        print(sr)
 
 
 

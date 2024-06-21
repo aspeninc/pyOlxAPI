@@ -7,13 +7,13 @@ Note: Full file path of this Python program must be listed in OneLiner App manag
       setting in the Tools | User-defined command | Setup dialog box
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "no"
 __email__     = "support@aspeninc.com"
-__status__    = "Release"
-__version__   = "1.2.2"
+__status__    = "In Development"
+__version__   = "2.2.2"
 
 # IMPORT -----------------------------------------------------------------------
 import logging
@@ -25,29 +25,41 @@ if PATH_LIB not in sys.path:
     os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
     sys.path.insert(0, PATH_LIB)
 #
-import time
 import pathlib
 import importlib.util
 from AppUtils import *
 #
 chekPythonVersion(PY_FILE)
+import ctypes
 #
 import tkinter as tk
 import tkinter.filedialog as tkf
 from tkinter import ttk
-import re
+##import tkinter.font
+import idlelib.colorizer as ic
+import idlelib.percolator as ip
 
-#
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2) # if your windows version >= 8.1
+except:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware() # win 8.0 or less
+    except:
+        pass
+
 # INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = iniInput(usage = "GUI for show and run python in a directory")
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.usage = "GUI for show and run python in a directory"
+PARSER_INPUTS.add_argument('-python' ,  help = '*(str) python path' , default = '',type=str,metavar='')
+PARSER_INPUTS.add_argument('-opath' ,  help = '*(str) out file path' , default = '',type=str,metavar='')
+PARSER_INPUTS.add_argument('-szwindow' , help = ' (str) size of window',default = '' ,type=str,metavar='')
+ARGVS = PARSER_INPUTS.parse_known_args()[0]
 #
-PARSER_INPUTS.add_argument('-fi' ,  help = '*(str) OLR file path' , default = '',type=str,metavar='')
-PARSER_INPUTS.add_argument('-tpath',help = ' (str) Output folder for PowerScript command file', default = '',type=str,metavar='')
-PARSER_INPUTS.add_argument('-pk' ,  help = ' (str) Selected object in the 1-Liner diagram', default = [],nargs='+',metavar='')
-ARGVS = parseInput(PARSER_INPUTS)
+ARGSR,NARGS,TARGS,VERBOSE = None,[],{},1
+txtfont = ("MS Sans Serif", 8)
 #
-ARGSR,NARGS,TARGS = None,[],{}
-#
+
 def chekPathIsNotWM(path):
     if not os.path.isdir(path):
         return False
@@ -148,8 +160,8 @@ def corectOut(out):
     res = res.replace('optional arguments:','Arguments:    *(Required)')
     res = res.replace('  -h, --help ','')
     res = res.replace(' show this help message and exit','')
-    res = res.replace('-ut     ','')
-    res = res.replace('(int) unit test [0-ignore, 1-unit test]','')
+##    res = res.replace('-ut     ','')
+##    res = res.replace('(int) unit test [0-ignore, 1-unit test]','')
     res = deleteLineBlank(res)
     res = res.replace('Arguments:    *(Required)','\nArguments:    *(Required)')
     return res
@@ -168,6 +180,20 @@ def getInputRequired(out):
                     res.append(a2[0])
             except:
                 pass
+        #
+        if a1.strip()=='-h, --help  show this help message and exit':
+            test = True
+    return res
+#
+def getInputs(out):
+    res = []
+    an = out.split('\n')
+    test = False
+    for a1 in an:
+        if len(a1)>6 and a1.strip().startswith('-'):
+            a2 = a1.split()
+            if a2[0][1:].strip():
+                res.append(a2[0][1:])
         #
         if a1.startswith('Arguments     * Required,-h --help:'):
             test = True
@@ -193,128 +219,224 @@ def getAllPyFile(path,rer):
     except:
         pass
     return res
+
+def fix_scaling(root):
+    """Scale fonts on HiDPI displays."""
+    import tkinter.font
+    scaling = float(root.tk.call('tk', 'scaling'))
+    if scaling > 1.4:
+        for name in tkinter.font.names(root):
+            font = tkinter.font.Font(root=root, name=name, exists=True)
+            size = int(font['size'])
+            if size < 0:
+                font['size'] = round(-0.75*size)
+
+def fixwordbreaks(root):
+    # On Windows, tcl/tk breaks 'words' only on spaces, as in Command Prompt.
+    # We want Motif style everywhere. See #21474, msg218992 and followup.
+    tk = root.tk
+    tk.call('tcl_wordBreakAfter', 'a b', 0) # make sure word.tcl is loaded
+    tk.call('set', 'tcl_wordchars', r'\w')
+    tk.call('set', 'tcl_nonwordchars', r'\W')
+
+
 #
 class MainGUI(tk.Frame):
     def __init__(self, master):
-##        master.attributes('-topmost', True)
+        #master.attributes('-topmost', True)
+        offX,offY,sw,sh = calOffsetMonitors(master)
+        #
         self.splitter = tk.PanedWindow(master, orient=tk.HORIZONTAL)
         self.master = master
-        sw = master.winfo_screenwidth()
-        sh = master.winfo_screenheight()
-        self.master.resizable(0,0)# fixed size
-        w = min(1000,sw)
-        h = min(650,sh)
-        master.geometry("{0}x{1}+{2}+{3}".format(w,h,int(sw/2-w/2),int(sh/2-h/2)))
+
+
+        if ARGVS.szwindow=='':
+            szwindow = '20 60 15 60'
+        else:
+            szwindow = ARGVS.szwindow
+        va = szwindow.split()
+        x0 = float(va[0])/100+offX/sw
+        x1 = float(va[1])/100
+        y0 = float(va[2])/100+offY/sh
+        y1 = float(va[3])/100
+        self.scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0)
+        self.btw = [12,12,25]
+        szt1,szt2 = 8,8
+##        self.txt_font1 = tkinter.font.Font( family = "MS Sans Serif", size = szt1)
+##        self.txt_font = tkinter.font.Font( family = "MS Sans Serif", size = szt2)
+##        self.txt_fontb = tkinter.font.Font( family = "MS Sans Serif",weight='bold', size = szt2)
+        master.geometry("{0}x{1}+{2}+{3}".format(int(x1*sw),int(y1*sh) + 40,int(x0*sw),int(y0*sh)))
+
         master.wm_title("Python OlxAPI Apps")
-##        pathico = os.path.join(os.path.dirname(sys.executable) ,"DLLs")
-##        setIco(master,pathico,"pyc.ico")
-        setIco_1Liner(master)
-        remove_button(self.master)
+        master.grid_columnconfigure(0, weight=1)
+        master.grid_rowconfigure((0,1), weight=1, uniform=1)
+
+        self.adapt_size = int(36*(sh)/(1080/y1)/self.scale_factor*100)
+
+        setIco_1Liner(master)#,png='1Liner.png'
+        hide_minimize_maximize(self.master)
+        self.outFile = ""
         self.currentPy = ""
         self.nodeFavorite = []
         self.nodeRecent = []
         self.nodes = dict()
         self.pathFile = dict()
         #
-        self.reg1 = WIN_REGISTRY(path = "SOFTWARE\\ASPEN\\OneLiner\\PyManager\\recents"  ,keyUser="",nmax =6)
+        self.reg1 = WIN_REGISTRY(path = "SOFTWARE\\ASPEN\\OneLiner\\PyManager\\recents"  ,keyUser="",nmax =10)
         self.reg2 = WIN_REGISTRY(path = "SOFTWARE\\ASPEN\\OneLiner\\PyManager\\dir"      ,keyUser="",nmax =1)
         self.reg3 = WIN_REGISTRY(path = "SOFTWARE\\ASPEN\\OneLiner\\PyManager\\favorites",keyUser="",nmax =20)
+        self.reg1.deleteInvalidFile()
+        self.reg3.deleteInvalidFile()
         self.initGUI()
+        self.setSTButton('active')
     #
     def initGUI(self):
+        self.currPy1 = tk.StringVar()
+        self.currentPy = self.reg1.getValue0()
         # left-side
         frame_left = tk.Frame(self.splitter)
         self.tree = ttk.Treeview(frame_left, show='tree')
         ysb1 = ttk.Scrollbar(frame_left, orient='vertical'  , command=self.tree.yview)
-        xsb1 = ttk.Scrollbar(frame_left, orient='horizontal', command=self.tree.xview)
         # left-side widget layout
-        self.tree.grid(row=0, column=0,padx=0,pady=0, sticky='NSEW')
+        self.tree.grid(row=0, column=0,padx=5,pady=0, sticky='NSEW')
         ysb1.grid(row=0, column=1, sticky='ns')
-        xsb1.grid(row=1, column=0, sticky='ew')
         # setup
-        self.tree.configure(yscrollcommand=lambda f, l:self.autoscroll(ysb1,f,l), xscrollcommand=lambda f, l:self.autoscroll(xsb1,f,l))
-        self.tree.configure(yscrollcommand=ysb1.set, xscrollcommand=xsb1.set)
-        self.tree.column("#0",minwidth=300, stretch=True)
-        #
+        self.tree.configure(yscrollcommand=ysb1.set)#, xscrollcommand=xsb1.set)
+        self.tree.column("#0",minwidth=10, stretch=True)
+        self.tree.grid_columnconfigure(0, weight=1)
+        self.tree.grid_rowconfigure((0,1), weight=1, uniform=1)
+        style = ttk.Style()
+        rowheight_adap = 20 +int((self.scale_factor-100.)/100*10)
+        style.configure("Treeview", highlightthickness=0, bd=0, font=txtfont, rowheight=rowheight_adap)
+
+
         frame_l1 = tk.Frame(frame_left)
-        frame_l1.grid(row=2, column=0,padx=0, pady=14)
+        frame_l1.grid(row=2, column=0,padx=0, pady=5)
         #
-        self.bt_dir = tk.Button(frame_l1, text="Change directory",width = 27,command=self.open_dir)
+        self.bt_dir = tk.Button(frame_l1, text="Change directory",width = self.btw[2],command=self.open_dir, font = txtfont)
         frame_l11 = tk.Frame(frame_l1)
 
-        self.bt_add = tk.Button(frame_l11, text="Add favorite",width = 12,command=self.addFavorite)
-        self.bt_rmv = tk.Button(frame_l11, text="Remove favorite",width = 12,command=self.removeFavorite)
+        self.bt_add = tk.Button(frame_l11, text="Add favorite",width = self.btw[0],command=self.addFavorite, font = txtfont)
+        self.bt_rmv = tk.Button(frame_l11, text="Remove",width = self.btw[0],command=self.removeFavorite, font = txtfont)
         self.bt_dir.grid(row=0, column=1,padx=5,pady=5)
         frame_l11.grid(row=1, column=1)
-        self.bt_add.grid(row=1, column=1,padx=5,pady=5)
-        self.bt_rmv.grid(row=1, column=3,padx=5,pady=5)
+        self.bt_add.grid(row=1, column=1,padx=1,pady=5)
+        self.bt_rmv.grid(row=1, column=2,padx=1,pady=5)
+
 
         #--------------------------------------------------------------------------RIGHT
         frame_right = tk.Frame(self.splitter)
+
+         # ----------------------------------------------------------------------------
         frame_r1 = tk.Frame(frame_right)
-        frame_r1.grid(row=0, column=0,sticky='',pady=5,padx=5)#,
-        self.text1 = tk.Text(frame_r1,wrap = tk.NONE,width=500,height=22)#
+        #
+        arg = tk.Label(frame_r1, text="Path file ", font = txtfont)
+        arg.grid(row=0, column=0, columnspan=2, sticky='w', pady=3)
+
+        cupy1 = tk.Entry(frame_r1, width= 70, textvariable=self.currPy1,bd=2,bg='SystemWindow',font = txtfont)
+        cupy1.grid(row=1, column=0, sticky='nsew',padx=0, pady=3)
+
+        btselectpy = tk.Button(frame_r1, text=" ... ", width= 2,relief= tk.RAISED,command=self.selectPYFile, font = txtfont)
+        btselectpy.grid(row=1, column=1, sticky='nsew', padx=5, pady=3)
+
+        bt_newPy = tk.Button(frame_r1 , text = 'New',width= 4,relief= tk.RAISED, command=self.newPyIDE, font=txtfont)
+        bt_newPy.grid(row=1, column=2, sticky='nsew', padx=5, pady=3)
+
+        frame_r1.columnconfigure(0, weight=24)
+        frame_r1.columnconfigure(1, weight=2)
+        frame_r1.columnconfigure(2, weight=4)
+        frame_r1.rowconfigure(1, weight=1)
+        frame_r1.pack(fill=tk.BOTH, expand=False, pady=5)
+
+
+        frame_r2 = tk.Frame(frame_right)
+        # frame_r2.grid(row=0, column=0,sticky='',pady=5,padx=0)#,
+
+        self.text1 = tk.Text(frame_r2, wrap = tk.NONE, width=600,height=self.adapt_size)#
         # yScroll
-        ysb2 = ttk.Scrollbar(frame_r1, orient='vertical'  , command=self.text1.yview)
-        xsb2 = ttk.Scrollbar(frame_r1, orient='horizontal', command=self.text1.xview)
-        ysb2.grid(row=1, column=1, sticky='ns')
-        xsb2.grid(row=2, column=0, sticky='ew')
+        ysb2 = ttk.Scrollbar(frame_r2, orient='vertical'  , command=self.text1.yview)
+        xsb2 = ttk.Scrollbar(frame_r2, orient='horizontal', command=self.text1.xview)
+        ysb2.grid(row=0, column=1, sticky='ns')
+        xsb2.grid(row=1, column=0, sticky='ew')
         self.text1.configure(yscrollcommand=lambda f, l:self.autoscroll(ysb2,f,l), xscrollcommand=lambda f, l:self.autoscroll(xsb2,f,l))
         self.text1.configure(yscrollcommand=ysb2.set, xscrollcommand=xsb2.set)
-        self.text1.grid(row=1, column=0, sticky='ns')
-        frame_r1.columnconfigure(0, weight=1)
-        frame_r1.rowconfigure(0, weight=1)
-        frame_r1.pack(fill=tk.BOTH, expand=True)
+        self.text1.grid(row=0, column=0, sticky='ns')
+        cdg = ic.ColorDelegator()
+        ip.Percolator(self.text1).insertfilter(cdg)
+        # Parsed the Font object
+        # to the Text widget using .configure( ) method.
+        self.text1.configure(font = txtfont)
 
-        # ----------------------------------------------------------------------------
-        frame_r2 = tk.Frame(frame_right)
-        #
-        arg = tk.Label(frame_r2, text="Arguments")
-        arg.grid(row=0, column=0, sticky='nw')
+        frame_r2.columnconfigure(0, weight=1, uniform='1',minsize=30)
+        frame_r2.rowconfigure(0, weight=1, uniform='1',minsize=30)
 
-        self.text2 = tk.Text(frame_r2,wrap = tk.NONE,width=500,height=8)
-        # yScroll
-        ysb3 = ttk.Scrollbar(frame_r2, orient='vertical'  , command=self.text2.yview)
-        xsb3 = ttk.Scrollbar(frame_r2, orient='horizontal', command=self.text2.xview)
-        ysb3.grid(row=1, column=1, sticky='ns')
-        xsb3.grid(row=2, column=0, sticky='ew')
-        self.text2.configure(yscrollcommand=lambda f, l:self.autoscroll(ysb3,f,l), xscrollcommand=lambda f, l:self.autoscroll(xsb3,f,l))
-        self.text2.configure(yscrollcommand=ysb3.set, xscrollcommand=xsb3.set)
-        self.text2.grid(row=1, column=0, sticky='ns')
-        frame_r2.columnconfigure(0, weight=1)
-        frame_r2.rowconfigure(1, weight=1)
         frame_r2.pack(fill=tk.BOTH, expand=True)
 
-        # ----------------------------------------------------------------------------
         frame_r3 = tk.Frame(frame_right)
-        frame_r3.columnconfigure(1, weight=1)
-        frame_r3.rowconfigure(1, weight=1)
-        frame_r3.pack(fill=tk.BOTH,expand=True)
-        # button launch
-        self.bt_launch = tk.Button(frame_r3, text="Launch",width =12,command=self.launch)
-        self.bt_launch.grid(row=0, column=1,padx = 0,pady=0)
-        #
-        frame_r4 = tk.Frame(frame_right)
-        frame_r4.columnconfigure(1, weight=1)
-        frame_r4.rowconfigure(5, weight=1)
-        #
-        #button edit
-        self.bt_edit = tk.Button(frame_r4 , text = 'Edit in IDE',width =12,command=self.editPyIDE)
-        self.bt_edit.grid(row=1, column=0,padx = 20,pady=35)
 
-        #button exit
-        bt_exit = tk.Button(frame_r4 , text = 'Exit',width =12,command=self.exit)
-        bt_exit.grid(row=1, column=3,padx =0,pady=30)
+        # arg = tk.Label(frame_r3, text="Args  ", font = self.txt_font)
+        # arg.grid(row=0, column=0, sticky='nw', pady=3)
+
+        btlaunch = tk.Button(frame_r3, text="Launch",width= self.btw[0],borderwidth=2,relief= tk.RAISED,command=self.launch,font = txtfont)#background='red',font='sans 10 bold',
+        btlaunch.grid(row=0, column=0, sticky='ns', padx=40, pady=5)
+
+        btlaunch_cmd = tk.Button(frame_r3 , text = "Launch with Command line \n Parameters", width = 2* self.btw[0],command=self.showCmdLineWindow, font = txtfont)
+        btlaunch_cmd.grid(row=0, column=1, sticky='ns', padx=40, pady=5)
+
+        btedit2 = tk.Button(frame_r3, text="Edit in IDE",width= self.btw[0],relief= tk.RAISED, command=self.editPyIDE, font = txtfont)
+        btedit2.grid(row=0, column=2, sticky='ns', padx=40, pady=5)
+
+
+
+        # bt_exit = tk.Button(frame_r3 , text = 'Exit',width =self.btw[0],command=self.exit,font = self.txt_font)
+        # bt_exit.grid(row=0, column=4, sticky='nw', padx=10, pady=3)
+
+
+        frame_r3.columnconfigure((0,2), weight=2, uniform='1')
+        frame_r3.columnconfigure(1, weight=4, uniform='1')
+        frame_r3.rowconfigure(1, weight=1)
+        frame_r3.pack(fill=tk.BOTH, expand=False, pady=5)
+
+        self.cmdparwin = tk.Toplevel(self.master)
+        self.cmdparwin.title("Arguments")
+        sw = self.master.winfo_screenwidth()
+        sh = self.master.winfo_screenheight()
+        w = min(600,sw)
+        h = min(200,sh)
+        self.cmdparwin.geometry("{0}x{1}+{2}+{3}".format(w,h,int(sw/2-w/2),int(sh/2-h/2)))
+        self.cmdparwin.transient(self.master)
+##        setIco_1Liner(self.cmdparwin)
+        self.cmdparwin.wm_protocol ("WM_DELETE_WINDOW", self.cmdparwin.withdraw)
+        self.cmdparwin.withdraw()
+
+
+        # self.cmdlineparam.withdraw()
+        frame_cmd = tk.Frame(self.cmdparwin)
+
+        self.text2 = tk.Text(frame_cmd, wrap = tk.NONE, width=600)
+        # yScroll
+        ysb3 = ttk.Scrollbar(frame_cmd, orient='vertical'  , command=self.text2.yview)
+        xsb3 = ttk.Scrollbar(frame_cmd, orient='horizontal', command=self.text2.xview)
+        ysb3.grid(row=0, column=1, sticky='ns')
+        xsb3.grid(row=1, column=0, sticky='ew')
+        self.text2.configure(yscrollcommand=lambda f, l:self.autoscroll(ysb3,f,l), xscrollcommand=lambda f, l:self.autoscroll(xsb3,f,l))
+        self.text2.configure(yscrollcommand=ysb3.set, xscrollcommand=xsb3.set)
+        self.text2.configure(font = txtfont)
+        self.text2.grid(row=0, column=0, sticky='ns')
+
+        frame_btt = tk.Frame(self.cmdparwin)
+        btrun_cmd = tk.Button(frame_btt , text = "Run", width =self.btw[0],command=self.launchcmd, font = txtfont)
+        btrun_cmd.pack(pady = 5)
+
+        frame_btt.pack()
+        frame_cmd.pack()
+
         #
-        self.bt_help = tk.Button(frame_r4 , text = 'Help',width =12,command=self.getHelp)
-        self.bt_help.grid(row=1, column=5,padx = 30,pady=30)
-        frame_r4.pack(fill=tk.BOTH,expand=True)
+        frame_left.columnconfigure(0, weight=1,minsize=2)#210
+        frame_left.rowconfigure(0, weight=1,minsize=2)
         #
-        frame_left.columnconfigure(0, weight=1,minsize=210)
-        frame_left.rowconfigure(0, weight=1,minsize=210)
-        #
-        frame_right.columnconfigure(0, weight=1)
-        frame_right.rowconfigure(1, weight=1)
+        frame_right.columnconfigure(0, weight=1,minsize=600)
+        frame_right.rowconfigure(1, weight=1,minsize=600)
         frame_right.pack(fill=tk.BOTH, expand=True)
 
         #
@@ -330,7 +452,14 @@ class MainGUI(tk.Frame):
         #
         self.builderTree()
         #
-        self.setSTButton('disabled')
+        try:
+            self.showPy()
+        except:
+            pass
+        try:
+            self.tree.selection_set([self.nodeRecent[1]])
+        except:
+            pass
     #
     def flush(self):
         pass
@@ -353,7 +482,19 @@ class MainGUI(tk.Frame):
         self.insert_nodeFavorite('')
         self.insert_nodeRecent('')
         self.insert_node1('', self.dirPy, self.dirPy)
+
         self.tree.bind('<<TreeviewSelect>>', self.open_node) # simple click
+
+    def search(self):
+        query = self.currPy1
+        selections = []
+        for child in self.tree.get_children():
+            if query.lower() in self.tree.item(child)['values'].lower():   # compare strings in  lower cases.
+                # print(tree.item(child)['values'])
+                selections.append(child)
+        # print('search completed')
+        self.tree.selection_set(selections)
+
     #
     def autoscroll(self, sbar, first, last):
         """Hide and show scrollbar as needed."""
@@ -425,7 +566,7 @@ class MainGUI(tk.Frame):
         self.nodeRecent = [node]
         #
         for r1 in recent:
-            if isPyFile(r1) and checkPyManagerVisu(r1):
+            if isPyFile(r1):# and checkPyManagerVisu(r1):
                 r1 = str(pathlib.Path(r1).resolve())
                 path1,py1 = os.path.split(os.path.abspath(r1))
                 node1 = self.tree.insert(node, 'end', text=py1, open=False)
@@ -443,7 +584,7 @@ class MainGUI(tk.Frame):
         self.nodeFavorite = [node]
         #
         for f1 in fav:
-            if isPyFile(f1) and checkPyManagerVisu(f1):
+            if isPyFile(f1):# and checkPyManagerVisu(f1):
                 f1 = str(pathlib.Path(f1).resolve())
                 path1,py1 = os.path.split(os.path.abspath(f1))
                 node1 = self.tree.insert(node, 'end', text=py1, open=False)
@@ -461,32 +602,32 @@ class MainGUI(tk.Frame):
                     p1 = os.path.join(abspath, p)
                     self.insert_node(node, p, p1)
         else:# File
-            v1 = self.pathFile[node]
-            if os.path.isfile(v1):
-                self.currentPy = os.path.abspath(v1)
-                self.text1.configure(state='normal')
-                self.setSTButton('active')
-                self.showPy()
-                #
-                if not node in self.nodeFavorite:
-                    self.bt_rmv['state']='disabled'
-                #
-            else:
-                self.setSTButton('disabled')
+            if node:
+                v1 = self.pathFile[node]
+                if os.path.isfile(v1):
+                    self.currentPy = os.path.abspath(v1)
+                    self.text1.configure(state='normal')
+                    self.setSTButton('active')
+                    self.showPy()
+                    #
+                else:
+                    self.setSTButton('disabled')
     #
     def setSTButton(self,stt):
         self.bt_add['state']=stt
         self.bt_rmv['state']=stt
-        self.bt_launch['state']=stt
-        self.bt_edit['state']=stt
     #
     def exit1(self):
+        logging.shutdown()
         self.master.destroy()
+        self.master.quit()
     #
     def exit(self):
         global ARGSR
         ARGSR = None
         self.master.destroy()
+        self.master.quit()
+
     #
     def open_dir(self):
         """Open a directory."""
@@ -513,11 +654,42 @@ class MainGUI(tk.Frame):
             self.insert_nodeRecent(self.nodeRecent[0])
     #
     def removeFavorite(self):
-        self.reg3.deleteValue(self.currentPy)
-        for i in range(1,len(self.nodeFavorite)):
-            self.tree.delete(self.nodeFavorite[i])
+        node = self.tree.focus()
+        if node in self.nodeFavorite:
+            for ki in range(len(self.nodeFavorite)):
+                if node==self.nodeFavorite[ki]:
+                    break
+            self.reg3.deleteValue(self.currentPy)
+            for i in range(1,len(self.nodeFavorite)):
+                self.tree.delete(self.nodeFavorite[i])
+            self.insert_nodeFavorite(self.nodeFavorite[0])
+
+            try:
+                nc = self.nodeFavorite[max(1,ki-1)]
+                self.tree.selection_set([nc])
+                v1 = self.pathFile[nc]
+                self.currentPy = v1
+                self.showPy()
+            except:
+                pass
+        #
+        elif node in self.nodeRecent:
+            for ki in range(len(self.nodeRecent)):
+                if node==self.nodeRecent[ki]:
+                    break
             #
-        self.insert_nodeFavorite(self.nodeFavorite[0])
+            self.reg1.deleteValue(self.currentPy)
+            for i in range(1,len(self.nodeRecent)):
+                self.tree.delete(self.nodeRecent[i])
+            self.insert_nodeRecent(self.nodeRecent[0])
+            try:
+                nc = self.nodeRecent[max(1,ki-1)]
+                self.tree.selection_set([nc])
+                v1 = self.pathFile[nc]
+                self.currentPy = v1
+                self.showPy()
+            except:
+                pass
     #
     def getVersion(self):
         for i in range(len(self.currentPy_as)):
@@ -527,40 +699,64 @@ class MainGUI(tk.Frame):
                 break
         return "__version__ = Unknown"
     #
+    def selectPYFile(self):
+        v1 = tkf.askopenfilename(filetypes=[("Python Files", "*.py *.pyw")],title='Select Python File')
+        if v1!='':
+            self.currentPy = v1
+            self.updateRecents()
+            self.showPy()
+            self.tree.selection_set([self.nodeRecent[1]])
+    #
     def showPy(self):
-        #
-        global NARGS,TARGS,IREQUIRED
+        global NARGS,TARGS,IREQUIRED,DFARGS
         IREQUIRED = []
         try:
             filehandle = open(self.currentPy, 'a' )
             filehandle.close()
-            self.bt_edit['state']='active'
         except IOError:
-            self.bt_edit['state']='disabled'
+            pass
         #
+        self.cmdparwin.title("Arguments: " +os.path.split(self.currentPy)[1])
         self.currentPy_as,se = read_File_text_0(self.currentPy)
+
+        self.text1.configure(state='normal')
         self.text1.delete('1.0', tk.END)
         self.text2.delete('1.0', tk.END)
-        self.text1.insert(tk.END, self.currentPy.replace('\\','/')+"\n")
-        self.text1.insert(tk.END, self.getVersion()+"\n")
+
+        #self.text1.insert(tk.END, self.currentPy.replace('\\','/')+"\n")
+        #self.text1.insert(tk.END, self.getVersion()+"\n")
+        self.currPy1.set(self.currentPy.replace('\\','/'))
         #
         o1 = None
         if haveParseInput(self.currentPy_as):
-            out,err,returncode = runSubprocess_getHelp(self.currentPy)
-            if returncode!=0:
-                self.text1.insert(tk.END, err.strip())
-                return
-            o1 = out.replace(" ","")
+            try:
+                if isEmbedded():
+                    cwd = os.path.dirname(OlxAPI.__file__)
+                else:
+                    cwd = PATH_LIB
+                #
+                fo1 = get_opath('')+'\\'+os.path.basename(self.currentPy)
+                fo1 = get_file_out(fo=fo1, fi='' , subf='' , ad='' , ext='.py')
+                saveString2File(fo1,"import os,sys;sys.path.insert(0, os.getcwd()); "+ se)
+                out,err,returncode = runSubprocess_getHelp(fo1, pythonPath=ARGVS.python,cwd=cwd,timeout=0.5)
+                if returncode!=0:
+                    self.text1.insert(tk.END, err.strip().replace(fo1,self.currentPy))
+                    return
+                o1 = out.replace(" ","")
+            except:
+                o1 = None
         #
         if o1==None:
             self.text1.insert(tk.END, se)
+            self.text1.configure(state='disabled')
+            self.text1.bind("<Key>", lambda event: "break")
             return
         #
-        IREQUIRED = getInputRequired (out)
+        IREQUIRED = getInputRequired(out)
+        IInternal = getInputs(out)
         #
-        # out = corectOut(out)
+        out = corectOut(out)
         self.text1.insert(tk.END, out)
-        self.text1.configure(state='disabled')
         #
         try:
             path = os.path.dirname(self.currentPy)
@@ -574,137 +770,147 @@ class MainGUI(tk.Frame):
             vala = module.ARGVS.__dict__
             valb = dict(sorted(vala.items(), key=lambda item: item[0]))
             #
-            NARGS = ['-h']
-            TARGS = {'-h':str}
+            NARGS = []
+            TARGS,DFARGS = {},{}
             for key, val in valb.items():
                 s1 = '-'+key
                 NARGS.append(s1)
                 TARGS[s1]= type(val)
-                if key not in ['ut']:
+                DFARGS[s1] = val
+                if key in IInternal:
                     s1 +=' '
                     #
-                    try:
-                        val0 = ARGVS.__dict__[key]
-                    except:
-                        val0 = val
+                    val0 = val
                     if type(val)==list:
                         for v1 in val0:
                             s1 += "\"" + v1 + "\"" + "  "
                     else:
                         if type(val)==str :
-                            s1 += "\"" + str(val0) + "\""
+                            s1 +=  "\"" + str(val0)+"\""
                         else:
                             s1 += str(val0)
-                    #
-                    s1 +="\n"
+                    s1 += "\n"
                     s1 = s1.replace('\\','/')
                     self.text2.insert(tk.END,s1)
+            self.text1.configure(state='disabled')
         except:
-            pass
+            self.text1.insert(tk.END, se)
+
+        self.text1.configure(state='disabled')
+        self.text1.bind("<Key>", lambda event: "break")
+
+    #
+    def newPyIDE(self):#OK
+        sres = 'editIDE\n-fi ' +'Untitled.py'+'\n'
+        if self.outFile:
+            saveString2File(self.outFile, sres)
+        self.exit1()
+
     #
     def editPyIDE(self):
-        app = os.path.dirname(sys.executable)+"\\Lib\\idlelib\\idle.bat"
-        args = [app,self.currentPy]
-        runSubprocess_noWait(args) #run subprocess without waiting
+        self.currentPy = self.getCurrentPy()
+        if self.currentPy=='':
+            return
+        sres = 'editIDE\n-fi '+self.currentPy+'\n'
+        if self.outFile:
+            saveString2File(self.outFile, sres)
+        self.exit1()
     #
     def errorInputArgument(self,v1,se):
-        global ARGSR
-        ARGSR = None
         sMain= se.ljust(30) +'\n'+ v1
         gui_info(sTitle="ERROR Input Argument",sMain=sMain)
-        logging.error('\n'+sMain)
+        logging.info(sMain)
     #
-    def launch(self):
-        global ARGSR,IREQUIRED
-        #
-        logging.info('run : '+self.currentPy)
-        #
-        pathe = os.path.dirname(sys.executable)
-        if (self.currentPy.upper()).endswith('.PYW'):
-            ARGSR = [os.path.join(pathe,'pythonw.exe')]
-        else:
-            ARGSR = [os.path.join(pathe,'python.exe')]
-        #
-        ARGSR.append(self.currentPy)
-        #
-        a1 = (self.text2.get(1.0, tk.END)).split("\n")
-        #
-        errInputRequired = []
-        demo1 = 0
-        #
-        for i in range(len(a1)):
-            v1 = (a1[i]).strip()
-            #
-            if v1!='':
-                k1 = str(v1).find(" ")
+    def getArgs(self):# check +correct args
+        res = ''
+        for a1 in (self.text2.get(1.0, tk.END)).split("\n"):
+            v1 = a1.strip()
+            if v1:
+                k1 = v1.find(" ")
                 if k1>0:
                     u1 = v1[:k1]
                     u2 = v1[k1+1:]
                 else:
                     u1 = v1
-                    u2 =''
-                    #
+                    try:
+                        u2 = DFARGS[u1]
+                    except:
+                        u2 = ''
                 if u1 not in NARGS:
                     self.errorInputArgument(v1,'Input not found:')
-                    return
-                #
-                t1 = TARGS[u1]
-                u2 = u2.strip()
-                u2 = u2.strip('"')
-                u2 = u2.strip("'")
-                #
-                if u1=='-demo' and u2:
-                    if u2 !='0':
-                        demo1 = 1
-                #
-                if u1 in IREQUIRED and u2=='':
-                    errInputRequired.append(v1)
-                #
-                if u2:
-                    #
-                    try:
-                        if checkSpecialCharacter(u2):
-                            self.errorInputArgument(v1,'Special Character found:')
-                            return
-                    except:
-                        pass
-                    #
-                    try:
-                        val = t1(u2)
-                    except:
-                        self.errorInputArgument(v1,'Type (' +str(t1.__name__) + ') not found:')
-                        return
+                    return None
+                try:
+                    if checkSpecialCharacter(u2):
+                        self.errorInputArgument(v1,'Special Character found: ')
+                        return None
+                except:
+                    pass
 
-                    if t1!=list:
-                        k2 = u2.find('"')
-                        if k2>=0:
-                            self.errorInputArgument(v1,'Error input:')
-                            return
-                        #
-                        if u2:
-                            ARGSR.append(u1)
-                            ARGSR.append(u2)
-                    else:
-                        if u2:
-                            ARGSR.append(u1)
-                            #
-                            ua = re.split(';|,|"',u2)
-                            for ui in ua:
-                                ui2 = ui.strip()
-                                if ui2:
-                                    ARGSR.append(ui2)
+                t1 = TARGS[u1]
+                #
+                try:
+                    u2n = t1(u2)
+                    if t1==str:
+                        u2n = u2n.strip('"')
+                        u2n = u2n.strip("'")
+                        u2n = '"'+u2n+'"'
+                except:
+                    self.errorInputArgument(v1, 'Type (' +str(t1.__name__) + ') not found:')
+                    return None
+                res += u1+' '+str(u2n) +'\n'
         #
-        if demo1==0 and errInputRequired:
-            sv1 = ''
-            for e1 in errInputRequired:
-                sv1 +=e1+'\n'
-            #
-            self.errorInputArgument(sv1,'* Required input missing')
+        logging.info(res)
+        return res
+    #
+    def launch(self):
+        global ARGSR,IREQUIRED,VERBOSE
+        #
+        self.currentPy = self.getCurrentPy()
+        if self.currentPy=='':
             return
+        logging.info('run : '+self.currentPy)
+        sres = 'run\n'+self.currentPy+'\n'
+        # args = self.getArgs()
+        # if args==None:
+        #     return
+        # sres += args
+        if self.outFile:
+            saveString2File(self.outFile, sres)
         #
         self.updateRecents()
         self.exit1()
     #
+    def launchcmd(self):
+        global ARGSR,IREQUIRED,VERBOSE
+        #
+        logging.info('run : '+self.currentPy)
+        sres = 'run\n'+self.currentPy+'\n'
+        # Toplevel object which will
+        # be treated as a new window
+        args = self.getArgs()
+        if args==None:
+            return
+        sres += args
+        if self.outFile:
+            saveString2File(self.outFile, sres)
+        #
+        self.updateRecents()
+        self.exit1()
+
+    def getCurrentPy(self):
+        f1 = self.currPy1.get()
+        if not isPyFile(f1):
+            gui_error('Error',f1+'\nPython file not found.\nCheck the file name and try again.')
+            return ''
+        return f1
+
+    def showCmdLineWindow(self):
+        #
+        self.currentPy = self.getCurrentPy()
+        if self.currentPy=='':
+            return
+        self.cmdparwin.deiconify()
+
     def run(self):
         self.frame_r4.grid_forget()
         self.pgFrame.grid(row=0,column=0, padx=0, pady=0)
@@ -749,14 +955,13 @@ def checkSpecialCharacter(s):
 def haveParseInput(ar1):
     for i in range(len(ar1)):
         a01 = ar1[i].replace(' ','')
-        if a01.startswith('ARGVS=AppUtils.parseInput(PARSER_INPUTS') or\
-           a01.startswith('ARGVS=parseInput(PARSER_INPUTS') or a01.startswith('PARSER_INPUTS.add_argument('):
+        if a01.startswith('importargparse') or a01.startswith('PARSER_INPUTS.add_argument('):
             return True
         if i>200:
             return False
     return False
 #
-def createRunFile(tpath,args):
+def createRunFile(tpath,args,verb):
     s  = "import sys,os\n"
     s += "PATH_FILE = os.path.split(os.path.abspath(__file__))[0]\n"
     if os.path.isfile(os.path.join(PATH_FILE,'AppUtils.py')):
@@ -766,7 +971,7 @@ def createRunFile(tpath,args):
     plb = plb.replace('\\','/')
     s += "PATH_LIB = "+ '"'+plb+'"\n'
     #
-    s += 'os.environ["PATH"] = PATH_LIB + ";" + os.environ["PATH"]\n'
+    #s += 'os.environ["PATH"] = PATH_LIB + ";" + os.environ["PATH"]\n'
     s += 'sys.path.insert(0, PATH_LIB)\n'
     s += 'import AppUtils\n'
     #
@@ -779,7 +984,7 @@ def createRunFile(tpath,args):
     s+= 'print("Run : "+command[1])\n'
     s+= 'print()\n'
     s+= '#\n'
-    s+='AppUtils.runCommand(command,PATH_FILE)\n'
+    s+='AppUtils.runCommand(command,PATH_FILE,%i)\n'%verb
     #
     sfile = os.path.join(tpath,'run.py')
     saveString2File(sfile,s)
@@ -794,7 +999,7 @@ def runFinal():
         #
         logging.info(s1)
         #
-        sfile = createRunFile(ARGVS.tpath,ARGSR)
+        sfile = createRunFile(ARGVS.tpath,ARGSR,VERBOSE)
         argn = [ARGSR[0],sfile]
         #
         runSubprocess_noWait(argn)
@@ -803,22 +1008,16 @@ def runFinal():
         logging.info('exit by user')
     #
 def main():
-    if ARGVS.tpath=='':
-        ARGVS.tpath = get_tpath()
-    #
-    FRUNNING,SRUNNING = openFile(ARGVS.tpath,'running')
+    if ARGVS.python=='' and isEmbedded():
+        raise( Exception('Python path is missing' ) )
+
     #-----------------------------------
     root = tk.Tk()
     app = MainGUI(root)
+    fix_scaling(root)
+    fixwordbreaks(root)
+    app.outFile =  ARGVS.opath
     root.mainloop()
-    #
-    runFinal()
-    #-----------------------------------
-    closeFile(FRUNNING)
-    deleteFile(SRUNNING)
-    #
-    if not isFile(ARGVS.tpath,'success'):
-        createFile(ARGVS.tpath,'cancel')
 
 # "C:\\Program Files (x86)\\ASPEN\\Python38-32\\python.exe" "pyManager.pyw"
 # "C:\\Program Files (x86)\\ASPEN\\Python38-32\\python.exe" pyManager.py -h

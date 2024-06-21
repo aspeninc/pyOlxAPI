@@ -1,0 +1,151 @@
+
+UNIT TEST: makepriback.py
+Run : makepriback.py
+OLR file : MAKEPRIBACK
+Study KV level: 132
+Relaygroup: 5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel 
+Backups (#):
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS9 132.kV 1TL Clav/Fiel (*)
+
+Relaygroup: 1 BUS5 132.kV - 2 BUS1 132.kV 2 L Glen/Clay 
+Backups: 
+	2 BUS1 132.kV - 1 BUS5 132.kV 1 L Glen/Clay (*)
+
+Relaygroup: 2 BUS1 132.kV - 1 BUS5 132.kV 2 L Glen/Clay 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 1 L Glen/Clay (*)
+	BUS14 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: 5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel 
+Backups (#):
+	BUS4 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS9 132.kV 1TL Clav/Fiel (*)
+
+Relaygroup: 2 BUS1 132.kV - BUS7 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 2 L Glen/Clay (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS9 132.kV 1TL Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 1 L Glen/Clay (*)
+	BUS14 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS4 132.kV - BUS3 132.kV 1 L Clav/Fiel 
+Backups: 
+	BUS10 132.kV - BUS4 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: 2 BUS1 132.kV - BUS14 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 2 L Glen/Clay (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 1 L Glen/Clay (*)
+
+Relaygroup: 2 BUS1 132.kV - BUS14 132.kV 3 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 2 L Glen/Clay (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 1 L Glen/Clay (*)
+	BUS14 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS7 132.kV - BUS13 132.kV 1 L [t]Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	2 BUS1 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS7 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS7 132.kV 1 L [t]Clav/Fiel (*)
+	BUS10 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS13 132.kV - BUS7 132.kV 1 L [t]Clav/Fiel 
+Backups: 
+	BUS10 132.kV - BUS13 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS10 132.kV - BUS13 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+	BUS4 132.kV - BUS10 132.kV 1 L Clav/Fiel (!)
+
+Relaygroup: BUS13 132.kV - BUS10 132.kV 1 L Clav/Fiel 
+Backups: 
+	BUS7 132.kV - BUS13 132.kV 1 L [t]Clav/Fiel (*)
+
+Relaygroup: BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel 
+Backups: 
+	2 BUS1 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS7 132.kV 1 L [t]Clav/Fiel (*)
+
+Relaygroup: BUS10 132.kV - BUS9 132.kV 1TL Clav/Fiel 
+Backups: 
+	BUS4 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS10 132.kV - BUS7 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS4 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS7 132.kV - BUS10 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	2 BUS1 132.kV - BUS7 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS7 132.kV 1 L [t]Clav/Fiel (*)
+
+Relaygroup: 1 BUS5 132.kV - 2 BUS1 132.kV 1 L Glen/Clay 
+Backups: 
+	2 BUS1 132.kV - 1 BUS5 132.kV 2 L Glen/Clay (*)
+
+Relaygroup: 2 BUS1 132.kV - 1 BUS5 132.kV 1 L Glen/Clay 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	1 BUS5 132.kV - 2 BUS1 132.kV 2 L Glen/Clay (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+	BUS14 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS10 132.kV - BUS4 132.kV 1 L Clav/Fiel 
+Backups (#):
+	5 BUS2 132.kV - BUS15 132.kV 1 L Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+	BUS13 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS7 132.kV - BUS10 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS4 132.kV - BUS10 132.kV 1 L Clav/Fiel 
+Backups (#):
+	BUS7 132.kV - BUS9 132.kV 1 L Clav/Fiel (*)
+	BUS10 132.kV - BUS9 132.kV 1TL Clav/Fiel (*)
+	5 BUS2 132.kV - BUS3 132.kV 1 L Clav/Fiel (*)
+
+Relaygroup: BUS14 132.kV - 2 BUS1 132.kV 1 L Clav/Fiel 
+Backups (#):
+	2 BUS1 132.kV - BUS14 132.kV 3 L Clav/Fiel (*)
+
+Total groups processed = 22
+Groups with full backup = 7
+(#)Groups with patial backup = 15
+(##)Groups with no backup = 0
+(*)New pairs found by script = 72
+(!)Existing pairs = 1
+(!!)Existing pairs missed by script = 0

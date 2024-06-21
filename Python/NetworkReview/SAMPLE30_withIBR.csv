@@ -1,0 +1,48 @@
+ASPEN OneLiner Prefault Voltage Check (Release V1.0.0),,,,,,,,,
+,,,,,,,,,
+Prefault Voltage Profile Factors Check,,,,,,,,,
+    This tool aims to identify factors,,,,,,,,,
+    that may contribute to prefault,,,,,,,,,
+    voltage profile issues,,,,,,,,,
+,,,,,,,,,
+Important Note:,,,,,,,,,
+    The items reported here are not necessarily,,,,,,,,,
+"    modeling errors, but instead represent items",,,,,,,,,
+    that may be contributing to a prefault voltage,,,,,,,,,
+    profile or convergence issue.,,,,,,,,,
+,,,,,,,,,
+Check start time:,,,,,,,,,
+OneLiner network model: SAMPLE30_withIBR.OLR,,,,,,,,,
+,,,,,,,,,
+item,function,object,area,zone,condition,quantity,expected,actual,notes
+1,check_ibr_for_nonzero_mw(),[GENW4] 7 'OHIO' 132 kV,1,1,non_zero_mw,gen.power.mw,0,10,45.01 MVA of load in network and load is not ignored
+2,check_ibr_for_nonzero_mw(),[GENW3] 26 'CALIFORNIA' 33 kV,2,1,non_zero_mw,gen.power.mw,0,5,45.01 MVA of load in network and load is not ignored
+3,"check_vccs_for_nonzero_prefault_current(voltage_checkpoints_pu=(0.95, 1.0, 1.05))",[CCGENUNIT] 20 'KENTUCKY' 33 kV,3,1,vccs_prefault_current,gen.current.amps,0,999.9997616,"This is max possible flow within nominal range, not actual flow"
+4,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[GENERATOR] 11 'NEVADA' 13.8 kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.874204929,Simulation converged: True
+5,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 17 'WASHINGTON' 33 kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.793411127,Simulation converged: True
+6,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 'MT MV BUS A' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896018601,Simulation converged: True
+7,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 'FDR 1 LOAD 4' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.891336576,Simulation converged: True
+8,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 'MT MV BUS B' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896005764,Simulation converged: True
+9,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 'FDR 1 LOAD 1' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896060719,Simulation converged: True
+10,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[LOAD] 'FDR 1 LOAD 3' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.891607596,Simulation converged: True
+11,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[SHUNT] 14 'MONTANA' 33 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.877672941,Simulation converged: True
+12,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[SHUNT] 'MT FDR 1' 12.47 kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896056167,Simulation converged: True
+13,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[GENW3] 26 'CALIFORNIA' 33 kV,2,1,low_voltage,bus.voltage.pu,>=0.95,0.926328555,Simulation converged: True
+14,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[CCGENUNIT] 20 'KENTUCKY' 33 kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.871746058,Simulation converged: True
+15,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 6 'NEVADA' 132 kV-10 'NEVADA' 33 kV 1 @ BUS: NEVADA 33.0kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.743544052,Off-nominal tap settings may affect this voltage
+16,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 12 'VERMONT' 33 kV-4 'VERMONT' 132 kV 1 @ BUS: VERMONT 33.0kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.906838737,Off-nominal tap settings may affect this voltage
+17,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 12 'VERMONT' 33 kV-13 'VERMONT' 13.8 kV 1 @ BUS: VERMONT 33.0kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.906838737,Off-nominal tap settings may affect this voltage
+18,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 28 'ARIZONA' 132 kV-27 'ARIZONA' 33 kV 1 @ BUS: ARIZONA 33.0kV,2,1,low_voltage,bus.voltage.pu,>=0.95,0.945403089,Off-nominal tap settings may affect this voltage
+19,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 'MT MV BUS B' 12.47 kV-14 'MONTANA' 33 kV 1 @ BUS: MT MV BUS B 12.47kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896005764,Off-nominal tap settings may affect this voltage
+20,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 'MT MV BUS B' 12.47 kV-14 'MONTANA' 33 kV 1 @ BUS: MONTANA 33.0kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.877672941,Off-nominal tap settings may affect this voltage
+21,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 'MT MV BUS A' 12.47 kV-14 'MONTANA' 33 kV 1 @ BUS: MT MV BUS A 12.47kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.896018601,Off-nominal tap settings may affect this voltage
+22,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER] 'MT MV BUS A' 12.47 kV-14 'MONTANA' 33 kV 1 @ BUS: MONTANA 33.0kV,88,1,low_voltage,bus.voltage.pu,>=0.95,0.877672941,Off-nominal tap settings may affect this voltage
+23,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER3] 6 'NEVADA' 132 kV-10 'NEVADA' 33 kV-'DOT BUS' 13.8 kV 1 @ BUS: NEVADA 33.0kV,3,1,low_voltage,bus.voltage.pu,>=0.95,0.743544052,Off-nominal tap settings may affect this voltage
+24,"check_prefault_voltage_range(checking_range=(0.95, 1.05))",[XFORMER3] 6 'NEVADA' 132 kV-10 'NEVADA' 33 kV-'DOT BUS' 13.8 kV 1 @ BUS: DOT BUS 13.8kV,1,1,low_voltage,bus.voltage.pu,>=0.95,0.874079166,Off-nominal tap settings may affect this voltage
+25,check_gen_for_nonzero_prefault_current(max_allowable_flow_mva=10.0),[GENERATOR] 13 'VERMONT' 13.8 kV,3,1,prefault_gen_flow,gen.flow.mva,<=10.0,42.60581903,It may be helpful to find the reason for this flow
+26,check_gen_for_nonzero_prefault_current(max_allowable_flow_mva=10.0),[GENERATOR] 5 'FIELDALE' 132 kV,1,1,prefault_gen_flow,gen.flow.mva,<=10.0,16.95770296,It may be helpful to find the reason for this flow
+27,check_gen_for_nonzero_prefault_current(max_allowable_flow_mva=10.0),[GENERATOR] 8 'REUSENS' 132 kV,2,1,prefault_gen_flow,gen.flow.mva,<=10.0,11.04305854,It may be helpful to find the reason for this flow
+28,check_gen_for_nonzero_prefault_current(max_allowable_flow_mva=10.0),[GENERATOR] 11 'NEVADA' 13.8 kV,3,1,prefault_gen_flow,gen.flow.mva,<=10.0,10.99077554,It may be helpful to find the reason for this flow
+29,check_gen_for_vref(expected_gen_vref=1.0),[GENERATOR] 5 'FIELDALE' 132 kV,1,1,gen_vref,gen.vref.pu,1,1.05,Inconsistent generator vref settings may cause unwanted prefault flows
+30,"check_xfmr_for_off_nominal_taps(expected_tap_min_max=(1.0, 1.0))",[XFORMER] 6 'NEVADA' 132 kV-10 'NEVADA' 33 kV 1,3,1,xfmr_sec_tap_low,xfmr.sec.tap,1,0.45,Review tap settings in the context of prefault voltage profile
+31,"check_xfmr_for_off_nominal_taps(expected_tap_min_max=(1.0, 1.0))",[XFORMER] 12 'VERMONT' 33 kV-4 'VERMONT' 132 kV 1,1,1,xfmr_sec_tap_high,xfmr.sec.tap,1,1.02,Review tap settings in the context of prefault voltage profile

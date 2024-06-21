@@ -6,47 +6,50 @@ Purpose:
 
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "OneLiner"
 __pyManager__ = "yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.1"
+__version__   = "2.1.1"
 
 # IMPORT -----------------------------------------------------------------------
 import sys,os
 PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 PATH_LIB = os.path.split(PATH_FILE)[0]
 if PATH_LIB not in sys.path:
-    os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
     sys.path.insert(0, PATH_LIB)
-#
+
+# IMPORT -----------------------------------------------------------------------
+from OlxObj import *
 import OlxAPI
 import OlxAPILib
-from OlxAPIConst import *
-from AppUtils import *
-#
-chekPythonVersion(PY_FILE)
-#
+import OlxAPIConst
+import AppUtils
+from ctypes import c_int
+import sys,os,time
 import xml.etree.ElementTree as ET
 import tkinter as tk
 import tkinter.filedialog as tkf
 import tkinter.messagebox as tkm
 from tkinter import ttk
+PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 
 # INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = iniInput(usage=
-        "\n\tRead input file, simulate faults and generate report with relay quantities.\
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.usage ="\nRead input file, simulate faults and generate report with relay quantities.\
         \n\tThe generated report can also be use as input to generate a deviation report\
-        \n\tthat shows the differences in the relay quantities between runs.")
+        \n\tthat shows the differences in the relay quantities between runs."
 #
 PARSER_INPUTS.add_argument('-ft' , help = ' (str) Input template file (CSV/Excel format)',default = "", metavar='')
-PARSER_INPUTS.add_argument('-bo' , help = ' (int) Branch Outages review option ([yes,no(default)])',default = '', metavar='')
 PARSER_INPUTS.add_argument('-fo' , help = ' (str) File (CSV/Excel format) to save calculation results ',default = '', metavar='')
 PARSER_INPUTS.add_argument('-demo',help = ' (int) demo [0-ignore, 1-with Branch Outages review,2-without Branch Outages review,\
                                                                   3-comparison with previous run]', default = 0,type=int,metavar='')
-ARGVS = parseInput(PARSER_INPUTS)
+ARGVS = PARSER_INPUTS.parse_known_args()[0]
+txtfont = ("MS Sans Serif", 8)
+
 
 #
 def getFdes(s1):
@@ -57,7 +60,7 @@ def getFdes(s1):
         fdes = fdes[idx+1:]
     #
     for i in range(1,len(sa)-2):
-        fdes += "\n"+ deleteSpace1(sa[i])
+        fdes += "\n"+ AppUtils.deleteSpace1(sa[i])
     return fdes
 #
 def run1SIMULATEFAULT(opt,fltstr):
@@ -73,7 +76,7 @@ def run1SIMULATEFAULT(opt,fltstr):
     #
     data1.set('FLTSPCVS',fltstr)
     sInput = ET.tostring(data)
-    if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(sInput):
+    if OlxAPIConst.OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(sInput):
         raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
 
 def compare(va1,va0,valC):
@@ -124,19 +127,19 @@ def compare(va1,va0,valC):
 
 #
 class FltDiffTool:
-    def __init__(self,ft):
+    def __init__(self,ft,bo=''):
         #
         self.t0 = time.time()
         self.ft = os.path.abspath(ft)
         #
-        self.ck = checkFileType(fi=self.ft,ext=[".CSV",".XLSX",".XLS",".XLSM"],err=True,sTitle0="Input template file")
+        self.ck = AppUtils.checkFileType(fi=self.ft,ext=[".CSV",".XLSX",".XLS",".XLSM"],err=True,sTitle0="Input template file")
         #
-        self.ws = ToolCSVExcell()
+
+        self.ws = AppUtils.ToolCSVExcell()
         self.ws.readFile(fi=self.ft,delim=',')
         #
-        self.bo = ARGVS.bo
-        #
         self.ws.selectSheet(nameSheet = "config")
+        self.bo = bo
         #
         self.bs = OlxAPILib.BusSearch(gui=0)
         self.brs = OlxAPILib.BranchSearch(gui=0)
@@ -173,11 +176,11 @@ class FltDiffTool:
         #removeDuplicateBranchOutage
         ehnda = []
         if self.br0>0:
-            e0 = OlxAPILib.getEquipmentData([self.br0],BR_nHandle)[0]
+            e0 = OlxAPILib.getEquipmentData([self.br0],OlxAPIConst.BR_nHandle)[0]
             ehnda.append(e0)
         #
         res = []
-        ea =  OlxAPILib.getEquipmentData(self.outageLst,BR_nHandle)
+        ea =  OlxAPILib.getEquipmentData(self.outageLst,OlxAPIConst.BR_nHandle)
         for i in range(len(self.outageLst)):
             if ea[i] not in ehnda:
                 res.append(self.outageLst[i])
@@ -192,8 +195,8 @@ class FltDiffTool:
                 s1 = [i+1]
                 busa = OlxAPILib.getBusByBranch(br1)
                 #
-                sb = OlxAPILib.getEquipmentData(busa,BUS_sName)
-                kv = OlxAPILib.getEquipmentData(busa,BUS_dKVnominal)
+                sb = OlxAPILib.getEquipmentData(busa,OlxAPIConst.BUS_sName)
+                kv = OlxAPILib.getEquipmentData(busa,OlxAPIConst.BUS_dKVnominal)
                 #
                 id1 = OlxAPILib.getDataByBranch(br1,"sID")
                 bc1 = OlxAPILib.getDataByBranch(br1,"sC")
@@ -249,7 +252,6 @@ class FltDiffTool:
         for i in range(1,len(self.sFaultSpec)):
             s1 = self.sFaultSpec[i]
             k = int(s1[0])
-            fdes0 = s1[1]
             #
             try:
                 run1SIMULATEFAULT(opt=s1[2],fltstr=s1[3])
@@ -300,9 +302,10 @@ class FltDiffTool:
             #
             self.get1UI_RQR(k1)
             #
-            if not OlxAPILib.pickNextFault():
+            if OlxAPIConst.OLXAPI_FAILURE==OlxAPI.PickFault(c_int(k1),c_int(9)):
                 break
             k1+=1
+
         return k1
     #
     def get1UI_RQR(self,k1):
@@ -365,7 +368,7 @@ class FltDiffTool:
             sMain += "]"
         #
         vala = self.ws.getValRowf(row=row,columnFr=column,leng=nc)
-        sMain += "\n" + array2String(vala,",")
+        sMain += "\n" + AppUtils.array2String(vala,",")
         #
         raise Exception("\n"+sTitle+"\n"+sMain)
         #
@@ -373,7 +376,7 @@ class FltDiffTool:
         sTitle = "Warning input data"
         sMain = s1
         vala = self.ws.getValRowf(row=row,columnFr=column,leng=nc)
-        sMain += "\n" + array2String(vala,",")
+        sMain += "\n" + AppUtils.array2String(vala,",")
         sMain+="\nFile : " + os.path.basename(self.ft)
         if self.ws.isExcel:
             sMain += "\nSheet : "+self.ws.currentSheet
@@ -386,14 +389,14 @@ class FltDiffTool:
             for i in range(nc-1):
                 sMain += "," + str(column+i+1)
             sMain += "]"
-        gui_info(sTitle+"(OK continue)",sMain)
+        AppUtils.gui_info(sTitle+"(OK continue)",sMain)
         return "\n"+sTitle+": "+sMain
     #
     def warningLog(self,s1,row,column,nc):
         sTitle = "Warning "
         sMain = s1
         vala = self.ws.getValRowf(row=row,columnFr=column,leng=nc)
-        sMain += array2String(vala,",")
+        sMain += AppUtils.array2String(vala,",")
         #
         sMain += "\n\trow = "+str(row)
         if nc==1:
@@ -413,7 +416,7 @@ class FltDiffTool:
         sTitle = "Sheet not found"
         sMain  = "\nFile : " + os.path.basename(self.ft)
         sMain += "\nSheet : " + sheetName + " not found"
-        gui_rrror(sTitle,sMain)
+        AppUtils.gui_rrror(sTitle,sMain)
         raise Exception("\n"+sTitle+"\n"+sMain)
 
     #
@@ -433,14 +436,8 @@ class FltDiffTool:
         self.OLR = os.path.abspath(self.OLR)
         #
         print("Input template file: " + self.ft)
-        try:
-            OlxAPILib.open_olrFile(self.OLR,ARGVS.olxpath)
-        except Exception as e:
-            s1 = str(e)
-            if s1.startswith('Error: Another OlxAPI'):
-                raise Exception('\n'+s1)
-            else:
-                self.errData(s1,kr,1,2,sheet='config')
+        print('OLR file:',self.OLR)
+        OLCase.open(self.OLR,1)
         #
         self.sOLR = ["OLR FILE",self.OLR]
         #
@@ -449,7 +446,7 @@ class FltDiffTool:
     # Study---------------------------------------------------------------------
     def getStudy(self,kr):
         vala = self.ws.getValRow(row=kr,columnFr=1)
-        vala[0]= deleteSpace1(vala[0])
+        vala[0]= AppUtils.deleteSpace1(vala[0])
         self.sstudy = vala
         self.bus0, self.br0 = 0, 0
         #
@@ -634,7 +631,7 @@ class FltDiffTool:
                 self.sRelay.append(vala)
                 try:
                     br1 = self.getBranchHnd(vala[1:6])
-                    rg1 = OlxAPILib.get1EquipmentData_try(br1,BR_nRlyGrp1Hnd)
+                    rg1 = OlxAPILib.get1EquipmentData_try(br1,OlxAPIConst.BR_nRlyGrp1Hnd)
                     na1 = OlxAPILib.fullBranchName(br1)
                     if rg1>0:
                         self.relayGroup.append([br1,rg1,na1])
@@ -701,7 +698,7 @@ class FltDiffTool:
         if vala[0] != "BRANCH OUTAGES":
             self.errData("Value must be 'BRANCH OUTAGES'",kr,1,1,sheet='config')
         self.sBranchOutage.append(vala)
-        #
+        #getBranchOutage
         while True:
             kr1+=1
             vala = self.ws.getValRow(row=kr1,columnFr=1)
@@ -863,7 +860,7 @@ class FltDiffTool:
         #
         ar1.append(["RELAY QUANTITIES REPORT"])
         ar1.append(self.sOLR)
-        self.da = getStrNow()
+        self.da = AppUtils.getStrNow()
         self.sDate1 = ["DATE",self.da]
         ar1.append(self.sDate1)
         #
@@ -940,43 +937,42 @@ class FltDiffTool:
             ext='.XLSX'
         #
         self.resFile = []
-        sp = "Result file had been saved in:"
         if ext=='.CSV':
-            fo = get_file_out(fo=ARGVS.fo, fi=self.ft , subf='res' , ad='_res', ext='.CSV')
+            fo = AppUtils.get_file_out(fo=ARGVS.fo, fi=self.ft , subf='res' , ad='_res', ext='.CSV')
             base = os.path.splitext(fo)[0]
             #
             fe = base +"_config.csv"
-            save2CSV(fe,ac,",")
+            AppUtils.save2CSV(fe,ac,",")
             self.resFile.append(fe)
-            sp += "\n  "+fe
             #
             if self.bo!='yes': # NO branch outage review
                 fe = base +"_result.csv"
-                save2CSV(fe,ar1,",")
+                AppUtils.save2CSV(fe,ar1,",")
                 self.resFile.append(fe)
-                sp += "\n  "+fe
+
                 #
                 fe = base +"_deviation.csv"
-                save2CSV(fe,ar2,",")
+                AppUtils.save2CSV(fe,ar2,",")
                 self.resFile.append(fe)
-                sp +="\n  "+fe
         else:
-            fo = get_file_out(fo=ARGVS.fo, fi=self.ft , subf='res' , ad='_res', ext=ext)
+            fo = AppUtils.get_file_out(fo=ARGVS.fo, fi=self.ft , subf='res' , ad='_res', ext=ext)
             if self.bo!='yes':# NO branch outage review
                 self.ws.save2Excel(fo ,[ac,ar1,ar2],["config","result","deviation"])
             else:
                 self.ws.save2Excel(fo ,[ac],["config"])
             #
             self.resFile.append(fo)
-            sp+="\n  "+fo
+
         #
         print("runtime: %.1fs" %(time.time()- self.t0))
-        print(sp)
+
     #
     def openExcelResult(self):
-        for se in self.resFile:
-            if ARGVS.ut==0:
-                launch_excel(se)
+        if len(self.resFile)>0:
+            s1 = 'Result file(s) had been saved in:'
+            for se in self.resFile:
+                s1+='\n-'+se
+            AppUtils.explorerDir(self.resFile[0], s1, PY_FILE) #open dir of fo
     #
     def run(self):
         self.getData()
@@ -997,16 +993,12 @@ class FltDiffTool:
 class MainGUI(tk.Frame):
     def __init__(self,master):
         tk.Frame.__init__(self, master=master)
-        self.sw = self.master.winfo_screenwidth()
-        self.sh = self.master.winfo_screenheight()
-        w,h = 900,500 #
-        self.master.geometry("{0}x{1}+{2}+{3}".format(w,h,int(self.sw/2-w/2),int(self.sh/2-h/2)))
-        self.master.resizable(0,0)# fixed size
+        szwindow = '46 40'
+        AppUtils.setGeometry(master,szwindow)
         self.master.wm_title("FAULT DIFF TOOL")
-        setIco_1Liner(self.master)
-        remove_button(self.master)
+        AppUtils.setIco_1Liner(self.master)
         # registry
-        self.reg = WIN_REGISTRY(path = "SOFTWARE\ASPEN\OneLiner\PyManager\FltDiffTool",keyUser="",nmax =1)
+        self.reg = AppUtils.WIN_REGISTRY(path = "SOFTWARE\ASPEN\OneLiner\PyManager\FltDiffTool",keyUser="",nmax =1)
         self.initGUI()
    #
     def write(self, txt):
@@ -1017,21 +1009,23 @@ class MainGUI(tk.Frame):
     #
     def close_buttons(self):
         self.master.destroy()
+        self.master.quit()
     #
     def clearConsol(self):
         self.text1.delete(1.0,tk.END)
     #
     def editInput(self):
-        launch_excel(self.ipf_v.get())
+        #self.var1.set("Openning Excel...")
+        AppUtils.launch_excel(self.ipf_v.get())
     #
     def editOutput(self):
-        launch_excel(self.opf_v.get())
+        AppUtils.launch_excel(self.opf_v.get())
     #
     def initGUI(self):
         sys.stdout = self
         #
-        fileFrame = tk.LabelFrame(self.master, text = "Files")
-        ipf = tk.Label(fileFrame, text="Input File : ")
+        fileFrame = tk.LabelFrame(self.master, text = "Files",font=txtfont)
+        ipf = tk.Label(fileFrame, text="Input File : ",font=txtfont)
         ipf.grid(row=0, column=0, sticky='E', padx=5, pady=5)
 
         self.ipf_v = tk.StringVar()
@@ -1044,17 +1038,17 @@ class MainGUI(tk.Frame):
                     self.ipf_v.set(ft1)
             except:
                 pass
-        ipfTxt = tk.Entry(fileFrame,width= 103,textvariable=self.ipf_v)
+        ipfTxt = tk.Entry(fileFrame,width= 105,textvariable=self.ipf_v,font=txtfont)
         ipfTxt.grid(row=0, column=1, sticky="W",padx=5, pady=5)
         #
-        ipf_b1 = tk.Button(fileFrame, text="...",width= 6,relief= tk.GROOVE,command=self.selectInputFile)
+        ipf_b1 = tk.Button(fileFrame, text="...",width= 6,relief= tk.GROOVE,command=self.selectInputFile,font=txtfont)
         ipf_b1.grid(row=0, column=2, sticky='W', padx=5, pady=5)
-        ipf_b2 = tk.Button(fileFrame, text="Edit in Excel",width= 10,relief= tk.GROOVE,command=self.editInput)
+        ipf_b2 = tk.Button(fileFrame, text="Edit in Excel",width= 10,relief= tk.GROOVE,command=self.editInput,font=txtfont)
         ipf_b2.grid(row=0, column=3, sticky='W', padx=5, pady=5)
         #
         csFrame = tk.LabelFrame(self.master, relief= tk.GROOVE, bd=0)
         #
-        self.text1 = tk.Text(csFrame,wrap = tk.NONE,width=108,height=20)#,
+        self.text1 = tk.Text(csFrame,wrap = tk.NONE,width=102,height=20)
         # yScroll
         yscroll = tk.Scrollbar(csFrame, orient=tk.VERTICAL, command=self.text1.yview)
         self.text1['yscroll'] = yscroll.set
@@ -1070,27 +1064,14 @@ class MainGUI(tk.Frame):
         #
         btFrame = tk.Frame(self.master, relief= tk.GROOVE, bd=0)
         #
-        self.run_b = tk.Button(btFrame, text="Launch",relief= tk.GROOVE,width= 10, command=self.run1)
+        self.run_b = tk.Button(btFrame, text="Launch",relief= tk.GROOVE,width= 12, command=self.run1,font=txtfont)
         self.run_b.grid(row=0,column=0, padx=0, pady=5)
         #
-        close_b = tk.Button(btFrame, text="Exit",width= 10,relief= tk.GROOVE, command=self.close_buttons)
+        close_b = tk.Button(btFrame, text="Exit",width= 12,relief= tk.GROOVE, command=self.close_buttons,font=txtfont)
         close_b.grid(row=0,column=1, padx=35, pady=5)
         #
-        clearCs_b = tk.Button(btFrame, text="Clear console",width= 10,relief= tk.GROOVE, command=self.clearConsol)
+        clearCs_b = tk.Button(btFrame, text="Clear console",width= 12,relief= tk.GROOVE, command=self.clearConsol,font=txtfont)
         clearCs_b.grid(row=0,column=2, padx=0, pady=5)
-
-        #
-        self.pgFrame = tk.Frame(self.master, relief= tk.GROOVE, bd=0)
-        self.var1 = tk.StringVar()
-        self.percent =  ttk.Label(self.pgFrame , textvariable=self.var1,width= 18) #
-        self.percent.grid(row=0,column=0, padx=10, pady=5)
-        #
-        self.progress = ttk.Progressbar(self.pgFrame,orient='horizontal',length=250,maximum=100, mode='determinate')
-        self.progress.grid(row=0,column=1, padx=10, pady=5)
-        #
-        self.stop_b = tk.Button(self.pgFrame, text="Stop",relief= tk.GROOVE,width= 10, command=self.stop_progressbar)
-        self.stop_b.grid(row=0,column=2, padx=10, pady=5)
-        self.stop_b['state']='disabled'
         #
         fileFrame.grid(row=0, sticky='W', padx=10, pady=5, ipadx=5, ipady=5)
         csFrame.grid(row=1, column=0, padx=10, pady=5)
@@ -1113,16 +1094,17 @@ class MainGUI(tk.Frame):
         except:
             pass
     #
+    def progressUpdate(self,s1):
+        self.master.wm_title("FAULT DIFF TOOL"+s1)
+        self.master.update()
+    #
     def simulate(self):
-        self.pgFrame.grid(row=3,column=0, padx=0, pady=0)
-        self.stop_b['state']='disabled'
-        self.var1.set("Reading data")
+
         try:
+            self.progressUpdate(': Reading data...')
             dt = FltDiffTool(ARGVS.ft)
             dt.getData()
-            self.stop_b['state']='active'
-            self.var1.set("Running")
-            self.progress['value'] = 0
+            self.master.attributes('-topmost', True)
             v1 = 0
             #
             if len(dt.sFaultSpec)>1:
@@ -1132,22 +1114,20 @@ class MainGUI(tk.Frame):
                 for i in range(1,len(dt.sFaultSpec)):
                     s1 = dt.sFaultSpec[i]
                     k = int(s1[0])
-                    fdes0 = s1[1]
                     #
                     try:
                         run1SIMULATEFAULT(opt=s1[2],fltstr=s1[3])
-                        fdes = dt.getResult1(k)
+                        #fdes = dt.getResult1(k)
                     except:
                         dt.errData("Error Fault Description",row=dt.rowFaultSpec[i],column=1,nc=4,sheet='config')
                     #
                     v1 = round(i/pMax*100)
-                    self.progress['value'] = v1
-                    self.var1.set("Running: " +str(i) + sMax)
+                    self.progressUpdate(": Running " +str(i) + sMax)
             else:
                 dt.run2BranchOutage()
                 #
                 if dt.bo=='':
-                    dt.bo = tkm.askquestion("", "Do you want to review BRANCH OUTAGES?")
+                    dt.bo = tkm.askquestion(PY_FILE, "Do you want to review BRANCH OUTAGES?")
                 #
                 if dt.bo!='yes': # no review branch outages
                     dt.getFltOpt()
@@ -1169,26 +1149,16 @@ class MainGUI(tk.Frame):
                                 k = dt.getResult(k)
                                 #
                                 v1 = round(i/pMax*100)
-                                self.progress['value'] = v1
-                                self.var1.set("Running: " +str(i) + sMax)
+                                self.progressUpdate("Running: " +str(i) + sMax)
             #
             if v1==100 or dt.bo=='yes':
-                self.var1.set("Saving...")
-                self.stop_b['state']='disabled'
+                self.progressUpdate("")
                 dt.saveReport()
                 #
-                self.var1.set("Openning Excel...")
                 dt.openExcelResult()
         except Exception as err:
             print(err)
-        #
-        self.finish()
-    #
-    def finish(self):
-        self.run_b['state']='active'
-        self.stop_b['state']='disabled'
-        self.progress.stop()
-        self.pgFrame.grid_forget()
+
     #
     def stop_progressbar(self):
         self.finish()
@@ -1202,52 +1172,43 @@ class MainGUI(tk.Frame):
             print('Input file not found:\n%s'%ARGVS.ft)
             return
         #
-        try:
-            self.progress.start()
-            self.t = TraceThread(target=self.simulate)
-            self.t.start()
-            #
-        except Exception as e:
-            print(str(e))
-
-        self.run_b['state']='disabled'
-        self.stop_b['state']='active'
-        #
+        self.simulate()
 #
 def run_demo():
     if ARGVS.demo in [1,2,3]:
+        bo = 'NO'
         if ARGVS.demo==1:
             sMain = "FltDiffTool demo (with Branch Outages review)"
             ARGVS.ft = os.path.join( PATH_FILE,"fltDiff_InputFile1.xlsx")
-            ARGVS.bo = 'yes'
+            bo = 'YES'
         elif ARGVS.demo==2:
             sMain = "FltDiffTool demo (without Branch Outages review)"
             ARGVS.ft = os.path.join( PATH_FILE,"fltDiff_InputFile1.xlsx")
-            ARGVS.bo = 'no'
         else :
             sMain = "FltDiffTool demo (comparison with previous run)"
             ARGVS.ft = os.path.join( PATH_FILE,"fltDiff_InputFile2.xlsx")
         #
-        ARGVS.fo = get_file_out(fo='' , fi=ARGVS.ft , subf='res' , ad='_demo', ext='.xlsx')
+        ARGVS.fo = AppUtils.get_file_out(fo='' , fi=ARGVS.ft , subf='res' , ad='_demo', ext='.xlsx')
         #
-        choice = ask_run_demo(PY_FILE,ARGVS.ut,'',"Input template file: " + ARGVS.ft)
-        if choice=="yes":
-            dt = FltDiffTool(ARGVS.ft)
+        sMain = "\n\nInput template file: " + ARGVS.ft
+        sMain+= "\n\nDo you want to run this demo (Y/N)?"
+        choice = AppUtils.gui_askquestion(PY_FILE[:-4]+' Demo',sMain)
+        if choice=="YES":
+            dt = FltDiffTool(ARGVS.ft,bo)
             return dt.run()
     else:
-        demo_notFound(PY_FILE,ARGVS.demo,[1,2,3])
-#
+        AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1,2,3])
+
+
 def main():
-    if ARGVS.demo>0:
+    if ARGVS.demo!=0:
         return run_demo()
     #
     root = tk.Tk()
-    feedback = MainGUI(root)
+    MainGUI(root)
     root.mainloop()
-#
+
+
 if __name__ == '__main__':
-    # ARGVS.demo = 1
-    try:
-        main()
-    except Exception as err:
-        AppUtils.FinishException(PY_FILE,err)
+    main()
+

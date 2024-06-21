@@ -4,138 +4,125 @@ Purpose: Simulate faults on the selected bus.
          in a CSV file
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "OneLiner"
 __pyManager__ = "Yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.1"
+__version__   = "2.1.3"
+
+
+# IMPORT -----------------------------------------------------------------------
+from OlxObj import *
+import AppUtils
+import os
+PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
+
+# INPUT Command Line Arguments
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.usage = "\n\tSimulate faults on the selected bus.\
+         \n\tRecord fault current, Thevenin impedance and X/R\
+         \n\tin a CSV file"
+#
+PARSER_INPUTS.add_argument('-fo'  , help = ' (str) Path name of the report file ', default = '', metavar='')
+PARSER_INPUTS.add_argument('-demo', help = ' (int) demo [0-ignore, 1-run demo]', default = 0,type=int,metavar='')
+ARGVS = PARSER_INPUTS.parse_known_args()[0]
+
+
+# CORE--------------------------------------------------------------------------
+def do1busFlt_2(b1):
+    sres  = '\n\n' + b1.toString()
+    sres += '\n Fault                                                           '
+    sres += ',PhaseA          ,PhaseB          ,PhaseC          ,R0+jX0        ,R1+jX1        ,R2+jX2        ,X/R      ,ANSI X/R ,R0/X1    ,X0/X1'
+
+    # Define the fault specification
+    fs1 = SPEC_FLT.Classical(obj=b1, fltApp='BUS', fltConn='3LG')
+    OLCase.simulateFault(fs1, 1)
+
+    fs1.fltConn = '2LG:BC'
+    OLCase.simulateFault(fs1, 0)
+
+    fs1.fltConn = '1LG:A'
+    OLCase.simulateFault(fs1, 0)
+
+    fs1.fltConn = 'LL:BC'
+    OLCase.simulateFault(fs1, 0)
+
+    for r1 in FltSimResult:
+        sres += '\n' + r1.FaultDescription.replace('  ',' ').ljust(65)
+
+        c1 = r1.current()
+        for ii in range(3):
+            v1 = ',' + toString(c1[ii],1, mode='polar').ljust(16)
+            sres += v1.ljust(15)
+
+        #
+        tv1 = r1.Thevenin
+        for ii in range(3):
+            v1 = ",%.2f+j%.2f"%(tv1[ii].real, tv1[ii].imag)
+            sres += v1.ljust(15)
+
+        #
+        xr1 = r1.XR_RATIO
+        for ii in range(4):
+            try:
+                v1 = ',%.2f'%xr1[ii]
+            except:
+                v1 = ',None'
+            sres += v1.ljust(10)
+
+    return sres
 
 #
-import sys,os
-PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
-PATH_LIB = os.path.split(PATH_FILE)[0]
-if PATH_LIB not in sys.path:
-    os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
-    sys.path.insert(0, PATH_LIB)
-#
-import OlxAPILib
-from OlxAPIConst import *
-import AppUtils
-# INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = AppUtils.iniInput(usage= "\n\tSimulate faults on the selected bus.\
-         \n\tRecord fault current, Thevenin impedance and X/R\
-         \n\tin a CSV file")
-#
-PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR file path', default = '',metavar='')
-PARSER_INPUTS.add_argument('-pk' , help = '*(str) Selected Bus in the 1-Liner diagram', default = [],nargs='+',metavar='')
-PARSER_INPUTS.add_argument('-fo' , help = ' (str) Path name of the report file ',default = '',metavar='')
-ARGVS = AppUtils.parseInput(PARSER_INPUTS,demo=1)
-#
-def do1busFlt1(bhnd):
-    #
-    fltConn   = [1,1,1,1]
-    #
-    fltOpt    = [0]*15
-    fltOpt[0] = 1  # Bus or Close-in
-    OlxAPILib.doFault(bhnd,fltConn, fltOpt, outageOpt=[], outageLst=[], fltR=0, fltX=0, clearPrev=1)
-    OlxAPILib.pick1stFault()
-    #
-    nRound = 2
-    sres = ''
-    while True:
-        sres += "\n"+ OlxAPILib.faultDescription()
-        #
-        mag,ang = OlxAPILib.getSCCurrent(hnd=HND_SC,style=4)
-        #
-        for i in range(3):
-            sres += "," + str(round(mag[i],nRound)) +"@"  +  str(round(ang[i],nRound))
-        #
-        r0 =  OlxAPILib.getEquipmentData([HND_SC],FT_dRZt)[0]
-        r1 =  OlxAPILib.getEquipmentData([HND_SC],FT_dRPt)[0]
-        r2 =  OlxAPILib.getEquipmentData([HND_SC],FT_dRNt)[0]
-        #
-        x0 =  OlxAPILib.getEquipmentData([HND_SC],FT_dXZt)[0]
-        x1 =  OlxAPILib.getEquipmentData([HND_SC],FT_dXPt)[0]
-        x2 =  OlxAPILib.getEquipmentData([HND_SC],FT_dXNt)[0]
-        #
-        xr = OlxAPILib.getEquipmentData([HND_SC],FT_dXR)[0]
-        #  R0+jX0, R1+jX1, R2+jX2, X/R
-        sres += "," + str(round(r0,nRound)) +"+j" + str(round(x0,nRound))
-        sres += "," + str(round(r1,nRound)) +"+j" + str(round(x1,nRound))
-        sres += "," + str(round(r2,nRound)) +"+j" + str(round(x2,nRound))
-        sres += "," + str(round(xr,nRound))
-        if not OlxAPILib.pickNextFault():
-            break
-    #
-    return sres
-#
-def run():
-    if not AppUtils.checkInputOLR(ARGVS.fi,PY_FILE,PARSER_INPUTS):
-        return
-    if not AppUtils.checkInputPK(ARGVS.pk,'Bus',PY_FILE,PARSER_INPUTS):
-        return
-    #
-    sr = ''#"\nOLR file: " + os.path.abspath(ARGVS.fi)
-    #
-    OlxAPILib.open_olrFile(ARGVS.fi,ARGVS.olxpath)
-    #
-    print("Selected BUS: "+ str(ARGVS.pk))
-    for i in range(len(ARGVS.pk)):
-        # get handle of object picked up
-        bhnd = OlxAPILib.FindObj1LPF_check(ARGVS.pk[i],TC_BUS)
-        sb = OlxAPILib.fullBusName(bhnd).ljust(25) +' : BUS FOUND'
-        sr+= "\n"+sb
-        print(sb)
-        #
-        sr += "\nFault, PhaseA, PhaseB, PhaseC, R0+jX0, R1+jX1, R2+jX2, X/R"
-        #
-        sr+= do1busFlt1(bhnd) + "\n"
+def run(b01=None):
+    OLCase.checkInit(PY_FILE) # check if ASPEN OLR file is opened
+
+    if b01==None:
+        ba = OLCase.busPicker()
+        if len(ba)==0:
+            print('No Bus Selected')
+            return
+    else:
+        ba = [b01] if type(b01)!=list else b01[:]
+
+    sr = "OLR file: " + OLCase.olrFile
+    for b1 in ba:
+        sr += do1busFlt_2(b1)
+
     #update file out
-    ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo , fi=ARGVS.fi , subf='res' , ad='' , ext='.csv')
+    ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo, fi=OLCase.olrFile , subf='' , ad='_'+PY_FILE[:-3] , ext='.csv')
     AppUtils.saveString2File(ARGVS.fo,sr)
-    print('\nReport file had been saved in:\n%s'%ARGVS.fo)
-    if ARGVS.ut ==0:
-        AppUtils.launch_excel(ARGVS.fo)
-    return 1
+
+    sMain = 'Report file had been saved in:\n%s'%ARGVS.fo
+    AppUtils.explorerDir(ARGVS.fo, sMain, PY_FILE) #open dir of fo
+
 #
 def run_demo():
     if ARGVS.demo==1:
-        ARGVS.fi = AppUtils.getASPENFile(PATH_FILE,'SAMPLE30.OLR')
-        ARGVS.fo = AppUtils.get_file_out(fo='' , fi=ARGVS.fi , subf='' , ad='_'+os.path.splitext(PY_FILE)[0]+'_demo' , ext='.csv')
-        ARGVS.pk = ["[BUS] 6 'NEVADA' 132 kV", "[BUS] 14 'MONTANA' 33 kV"]
+        fi = AppUtils.getASPENFile(PATH_FILE,'SAMPLE30.OLR')
+        OLCase.open(fi,1)
+        b1 = OLCase.findOBJ('BUS', ['NEVADA',132])
         #
-        choice = AppUtils.ask_run_demo(PY_FILE,ARGVS.ut,ARGVS.fi,"Selected Bus: " + str(ARGVS.pk))
-        if choice=="yes":
-            return run()
+        sMain = "\nOLR file: " + fi
+        sMain+= "\n\nBus: " + b1.toString()
+        sMain+= "\n\nDo you want to run this demo (Y/N)?"
+        choice = AppUtils.gui_askquestion(PY_FILE+' Demo',sMain)
+        if choice=='YES':
+            return run(b1)
     else:
-        AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1])
+        AppUtils.demo_notFound(PY_FILE, ARGVS.demo, [1],gui_err=1)
 
-def unit_test():
-    ARGVS.fi = os.path.join(PATH_FILE,"BusFlt.OLR")
-    ARGVS.pk = ["[BUS] 6 'NEVADA' 132 kV", "[BUS] 14 'MONTANA' 33 kV"]
-    sr = "OLR file: " + os.path.basename(ARGVS.fi) +"\n"
-    run()
-    sr += AppUtils.read_File_text_2(ARGVS.fo,1)
-    #
-    AppUtils.deleteFile(ARGVS.fo)
-    return AppUtils.unit_test_compare(PATH_FILE,PY_FILE,sr)
 
-#
 def main():
-    if ARGVS.ut >0:
-        return unit_test()
-    if ARGVS.demo>0:
+    if ARGVS.demo!=0:
         return run_demo()
     run()
-#
+
+
 if __name__ == '__main__':
-    # ARGVS.ut = 1
-    # ARGVS.demo = 1
-    try:
-        main()
-    except Exception as err:
-        AppUtils.FinishException(PY_FILE,err)
+    main()
+
 
 

@@ -1,13 +1,13 @@
 ﻿"""Sample usage of ASPEN OlxAPI in Python.
 """
 __author__ = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2022, Advanced System for Power Engineering Inc."
 __license__ = "All rights reserved"
-__version__ = "1.3.0"
+__version__ = "1.5.3"
 __email__ = "support@aspeninc.com"
 __status__ = "Release"
 
-import sys
+import sys,math
 import os
 from ctypes import *
 import OlxAPI
@@ -25,6 +25,280 @@ INPUTS.add_argument('-fi' , metavar='', help = '*(str) OLR input file',   defaul
 INPUTS.add_argument('-fib' , metavar='', help = '(str) OLR input file B',   default = "")
 INPUTS.add_argument('-fo' , metavar='', help = '(str) output file',   default = "")
 ARGVS = INPUTS.parse_known_args()[0]
+
+def testGetSetSysParams():
+    """Test the SY_vParam operation
+    """
+    char10K = c_char*10000
+    buff = char10K()
+    if OLXAPI_OK != OlxAPI.GetData(HND_SYS, SY_vParams, buff ):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    sysParams = OlxAPI.decode(buff.value).split('\t')
+    print( sysParams )
+    voidpArray = c_void_p*MXOBJPARAMS
+    params = voidpArray()
+    params[0] = cast(pointer(c_char_p(OlxAPI.encode3("bSimulateGenW4\t1"))),c_void_p)
+    params[1] = cast(pointer(c_char_p(OlxAPI.encode3(""))),c_void_p)  # Terminator
+    if OLXAPI_OK != OlxAPI.SetData(HND_SYS, SY_vParams, params ):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    if OLXAPI_OK != OlxAPI.PostData(HND_SYS):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    olrFilePathNew = "c:\\000tmp\mod.olr"
+    if OLXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( olrFilePathNew + " had been saved successfully")
+
+def testOLGfxOp(olrFilePath):
+    """Test the OLGfxOp API
+    """
+    intArray150 = c_int*150
+    intArray500 = c_int*500
+    bsHnd = c_int(0)
+    if OLXAPI_OK != OlxAPI.GetEquipment(TC_BUS, pointer(bsHnd)):
+        raise OlxAPI.PrintObj1LPF(OlxAPI.ErrorString())
+    print(OlxAPI.PrintObj1LPF(bsHnd))
+    inBuf = intArray150()
+    outBuf = intArray500()
+    nCmd = OLGFX_GETDATA
+    inBuf[0] = bsHnd
+    inBuf[1] = 0
+    if OLXAPI_OK != OlxAPI.OlxAPIGfxOp( nCmd, inBuf, outBuf ):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( "OlxAPIGfxOp success" )
+    return 1
+
+def testAddEquipment(olrFilePath):
+    """Test the AddEquipment API
+    """
+    OlxAPI.CreateNetwork(100)
+
+    intArray = c_int*MXOBJPARAMS
+    tokens = intArray()
+    voidpArray = c_void_p*MXOBJPARAMS
+    params = voidpArray()
+    doubleArray = c_double*20
+
+    # Add bus NewBus1 123 kV
+    bsName = c_char_p(OlxAPI.encode3("NewBus1"))
+    params[0] = cast(pointer(bsName),c_void_p)
+    tokens[0] = BUS_sName
+    kvNominal = c_double(132.0)
+    #LPkvNominal = pointer(kvNominal)
+    params[1] = cast(pointer(kvNominal),c_void_p)
+    tokens[1] = BUS_dKVnominal
+    tokens[2] = 0  #zero terminated list
+    hndBs1 = OlxAPI.AddEquipment(c_int(TC_BUS),tokens,params)
+    if hndBs1 == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndBs1) + " had been added successfully")
+
+    # Add a new SVD
+    tokens[0] = SV_nBusHnd
+    params[0] = cast(pointer(c_int(hndBs1)),c_void_p)
+
+    tokens[1] = SV_dB
+    BU = c_double(5.0)
+    params[1] = cast(pointer(BU),c_void_p)
+
+    tokens[2] = SV_vnNoStep
+    steps = intArray()
+    steps[0] = 5
+    steps[1] = 0   # Terminator
+    params[2] = cast(pointer(steps),c_void_p)
+
+    tokens[3] = SV_vdBinc
+    B = doubleArray()
+    B[0] = 0.1
+    params[3] = cast(pointer(B),c_void_p)
+
+    tokens[4] = SV_vdB0inc
+    B0 = doubleArray()
+    B0[0] = 0.3
+    params[4] = cast(pointer(B0),c_void_p)
+
+    tokens[5] = 0   # Terminator
+
+    hndSVD = OlxAPI.AddEquipment(TC_SVD,tokens,params)
+    if hndSVD <= 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndSVD) + " had been added successfully")
+
+    # Add bus NewBus2 123 kV
+    bsName = c_char_p(OlxAPI.encode3("NewBus2"))
+    params[0] = cast(pointer(bsName),c_void_p)
+    tokens[0] = BUS_sName
+    kvNominal = c_double(132.0)
+    #LPkvNominal = pointer(kvNominal)
+    params[1] = cast(pointer(kvNominal),c_void_p)
+    tokens[1] = BUS_dKVnominal
+    tokens[2] = 0  #zero terminated list
+    hndBs2 = OlxAPI.AddEquipment(c_int(TC_BUS),tokens,params)
+    if hndBs2 == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndBs2) + " had been added successfully")
+
+    # Add line NewBus1-NewBus2 123kV 1 L
+    params[0] = cast(pointer(c_int(hndBs1)),c_void_p)
+    tokens[0] = LN_nBus1Hnd
+    params[1] = cast(pointer(c_int(hndBs2)),c_void_p)
+    tokens[1] = LN_nBus2Hnd
+    ctkID = c_char_p(OlxAPI.encode3("1"))
+    params[2] = cast(pointer(ctkID),c_void_p)
+    tokens[2] = LN_sID
+    X = c_double(0.1)
+    params[3] = cast(pointer(X),c_void_p)
+    tokens[3] = LN_dX
+    X.value = 0.3
+    params[4] = cast(pointer(X),c_void_p)
+    tokens[4] = LN_dX0
+    ratings = doubleArray()
+    ratings[0] = 1500
+    ratings[1] = 1600
+    ratings[2] = 1800
+    ratings[3] = 2500
+    params[5] = cast(pointer(ratings),c_void_p)
+    tokens[5] = LN_vdRating
+    myMemo = c_char_p(OlxAPI.encode3("Line memo text"))
+    params[6] = cast(pointer(myMemo),c_void_p)
+    tokens[6] = OBJ_sMemo
+    tokens[7] = 0  # Must terminate the param list with zero
+    #myUDF = c_char_p(OlxAPI.encode3("OWNER=49N"))
+    #params[7] = cast(pointer(myUDF),c_void_p)
+    #tokens[7] = OBJ_sUDF
+    #tokens[8] = 0  #zero terminated list
+    hndLn = OlxAPI.AddEquipment(c_int(TC_LINE),tokens,params)
+    if hndLn == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndLn) + " had been added successfully")
+    #print( "Memo=" + OlxAPI.GetObjMemo(hndLn) )
+
+    # Add a OC relay to the line on bus1 side
+    sID = c_char_p(OlxAPI.encode3("E51G"))
+    params[0] = cast(pointer(sID),c_void_p)
+    tokens[0] = OG_sID
+    CTR = 100
+    params[1] = cast(pointer(c_double(CTR)),c_void_p)
+    tokens[1] = OG_dCT
+    TDPickups = doubleArray()
+    TDPickups[0] = 5.0
+    params[2] = cast(pointer(TDPickups),c_void_p)
+    tokens[2] = OG_vdDTPickup
+    TDDelays = doubleArray()
+    TDDelays[0] = 1.0
+    params[3] = cast(pointer(TDDelays),c_void_p)
+    tokens[3] = OG_vdDTDelay
+    params[4] = cast(pointer(c_double(10*CTR)),c_void_p)
+    tokens[4] = OG_dInst
+    params[5] = cast(pointer(c_int(1)),c_void_p)
+    tokens[5] = OG_nCTLocation
+    tokens[6] = 0  # Must terminate the param list with zero
+    hndOC = OlxAPI.AddDevice(c_int(TC_RLYOCG),c_int(hndLn),0,tokens,params)
+    if hndOC == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndOC) + " had been added successfully")
+
+    # Add a DS relay to the line on bus1 side
+    sID = c_char_p(OlxAPI.encode3("E21G"))
+    params[0] = cast(pointer(sID),c_void_p)
+    tokens[0] = DG_sID
+    DSType = c_char_p(OlxAPI.encode3("SEL411G__"))
+    params[1] = cast(pointer(DSType),c_void_p)
+    tokens[1] = DG_sDSType
+    CTR = 100
+    params[2] = cast(pointer(c_double(CTR)),c_void_p)
+    tokens[2] = DG_dCT
+    VTR = 500
+    params[3] = cast(pointer(c_double(VTR)),c_void_p)
+    tokens[3] = DG_dVT
+    DSParams = "Z1MAG\t1.2\t" + \
+               "Z1ANG\t75\t" + \
+               "Z0MAG\t1.2\t" + \
+               "Z0ANG\t75\t" + \
+               "k0M1\t0.8\t" + \
+               "k0A1\t-82\t" + \
+               "E32\tAUTO\t" + \
+               "E21MG\t1\t" + \
+               "E21XG\tN\t" + \
+               "Z1MG\t1.8\t"
+    params[4] = cast(pointer(c_char_p(OlxAPI.encode3(DSParams))),c_void_p)
+    tokens[4] = DG_sParam
+    tokens[5] = 0  # Must terminate the param list with zero
+    hndDS = OlxAPI.AddDevice(c_int(TC_RLYDSG),c_int(hndLn),0,tokens,params)
+    if hndDS == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndDS) + " had been added successfully")
+
+    # Add a Logic scheme to the line on bus1 side
+    sID = c_char_p(OlxAPI.encode3("SCHEME1"))
+    params[0] = cast(pointer(sID),c_void_p)
+    tokens[0] = LS_sID
+    sScheme = c_char_p(OlxAPI.encode3("CUSTOM"))
+    params[1] = cast(pointer(sScheme),c_void_p)
+    tokens[1] = LS_sScheme
+    sEquation  = c_char_p(OlxAPI.encode3("DS+OC"))
+    params[1] = cast(pointer(sEquation),c_void_p)
+    tokens[1] = LS_sEquation
+    #
+    signalName = voidpArray()
+    #
+    signalName[0] = cast(pointer(c_char_p(OlxAPI.encode3("OC"))),c_void_p)
+    signalName[1] = cast(pointer(c_char_p(OlxAPI.encode3("DS"))),c_void_p)
+    signalName[2] = cast(pointer(c_char_p(OlxAPI.encode3(""))),c_void_p)   # Terminator
+    params[2] = cast(pointer(signalName),c_void_p)
+    tokens[2] = LS_vsSignalName
+    #
+    signalType = intArray()
+    signalType[0] = c_int(LVT_OC_TOC)
+    signalType[1] = c_int(LVT_DS_ZONE1)
+    signalType[2] = c_int(0)  # terminator
+    params[3] = cast(pointer(signalType),c_void_p)
+    tokens[3] = LS_vnSignalType
+    #
+    signalVar = doubleArray()
+    signalVar[0] = c_double(hndOC)
+    signalVar[1] = c_double(hndDS)
+    params[4] = cast(pointer(signalVar),c_void_p)
+    tokens[4] = LS_vdSignalVar
+    #
+    tokens[5] = 0  # Must terminate the param list with zero
+    hndLS = OlxAPI.AddDevice(c_int(TC_SCHEME),c_int(hndLn),0,tokens,params)
+    if hndLS == 0:
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndLS) + " had been added successfully")
+
+    # Modify a signal
+    signalType[0] = c_int(LVT_OC_TOC)
+    signalType[1] = c_int(LVT_OC_DT1)
+    signalType[2] = c_int(0)  # terminator
+    if 1 != OlxAPI.SetData(hndLS,LS_vnSignalType,pointer(signalType)) :   # Must preceed LS_vdSignalVar
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    signalVar[0] = c_double(hndOC)
+    signalVar[1] = c_double(hndOC)
+    if 1 != OlxAPI.SetData(hndLS,LS_vdSignalVar,pointer(signalVar)) :    # Must come after LS_vnSignalType
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+
+    if 1 != OlxAPI.PostData(hndLS) :
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( OlxAPI.PrintObj1LPF(hndLS) + " had been modifed successfully")
+
+    olrFilePathNew = olrFilePath + "x.olr"
+    if OLXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( olrFilePathNew + " had been saved successfully")
+
+def testSnapSPCData(olrFilePath):
+    """Test the SNAPSPC API
+    """
+    cmdXML = '<SNAPSPC OPTIONS="7" />'
+
+    print(cmdXML)
+    if OLXAPI_FAILURE == OlxAPI.Run1LPFCommand(cmdXML):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+
+    olrFilePathNew = olrFilePath + "x.olr"
+    if OLXAPI_FAILURE == OlxAPI.SaveDataFile(olrFilePathNew):
+        raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+    print( olrFilePathNew + " had been saved successfully")
 
 def testGetObjGraphicData():
     """Test API GetObjGraphic
@@ -186,7 +460,7 @@ def testExportNetwork():
         print("File opened successfully: " + olrFilePath)
 
         cmdParams = '<EXPORTNETWORK' \
-                    ' FORMAT="DXT" DXTPATHNAME="' + olrFilePath + '.dxt"' \
+                    ' FORMAT="XML" DATATYPE="4" OUTPUTPATHNAME="' + olrFilePath + '.olx"' \
                     ' />'
 
         print(cmdParams)
@@ -391,7 +665,7 @@ def testOlxAPIComputeRelayTime():
         if "CL-G1" == argsGetData["data"]:
             if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-            print(( "OC Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
+            print(( "OC Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + OlxAPI.decode(opDevice.value) ))
             break
     argsGetEquipment["tc"] = TC_RLYOCP
     argsGetEquipment["hnd"] = 0  # Get the first object
@@ -405,7 +679,7 @@ def testOlxAPIComputeRelayTime():
         if "CL-P1" == argsGetData["data"]:
             if OLXAPI_OK != OlxAPI.ComputeRelayTime(handle,Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-            print(( "OC Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
+            print(( "OC Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + OlxAPI.decode(opDevice.value) ))
             break
     argsGetEquipment["tc"] = TC_RLYDSG
     argsGetEquipment["hnd"] = 0  # Get the first object
@@ -418,7 +692,7 @@ def testOlxAPIComputeRelayTime():
         if "Clator_NV G1" == argsGetData["data"]:
             if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-            print(( "DS Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
+            print(( "DS Ground relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + OlxAPI.decode(opDevice.value) ))
             break
     argsGetEquipment["tc"] = TC_RLYDSP
     argsGetEquipment["hnd"] = 0  # Get the first object
@@ -431,7 +705,7 @@ def testOlxAPIComputeRelayTime():
         if "CLPhase2" == argsGetData["data"]:
             if OLXAPI_OK != OlxAPI.ComputeRelayTime(argsGetEquipment["hnd"],Imag,Iang,Vmag,Vang,VpreMag,VpreAng,pointer(opTime),pointer(opDevice)):
                 raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-            print(( "DS Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + opDevice.value ))
+            print(( "DS Phase relay: " + str(argsGetData["data"]) + " opTime=" + str(opTime.value) + " opDevice=" + OlxAPI.decode(opDevice.value) ))
             break
 
 def testOlxAPIMakeOutageList():
@@ -965,49 +1239,6 @@ def testGetData():
     #testGetJournalRecord()
     return 0
 
-def testOlxAPI():
-    try:
-        olrFilePath = ARGVS.fi
-        """
-        if (not os.path.isfile(olrFilePath)):
-            Tkinter.Tk().withdraw() # Close the root window
-            opts = {}
-            opts['filetypes'] = [('ASPEN OneLiner file',('.olr'))]
-            opts['title'] = 'Open OneLiner Network'
-            olrFilePath = str(tkFileDialog.askopenfilename(**opts))
-        """
-        if not os.path.isfile(olrFilePath):
-            print("OLR file does not exit: ", olrFilePath)
-            return 1
-
-        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
-            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
-        print("File opened successfully: " + olrFilePath)
-
-        #testGetObjGraphicData()
-        #testEliminateZZBranch()
-        #testGetSetUDF()
-        #testFindObjGUID()
-        #testFindObj1LPF()
-        #testDeleteEquipment(olrFilePath)
-        testFindObj()
-        #testBoundaryEquivalent(olrFilePath)
-        #testDoBreakerRating()
-        #testGetData()
-        #testFaultSimulation()
-        #testGetSEADeviceOp()
-        #testOlxAPIComputeRelayTime()
-        #testOlxAPI.MakeOutageList()
-        #testOlxAPI.GetSetObjTagsMemo()
-        #testDoRelayCoordination()
-        #testCHECKRELAYOPERATIONSEA()
-        #testDIFFANDMERGE()
-        #testSaveDataFile(olrFilePath)
-        return 0
-
-    except  OlxAPI.OlxAPIException as err:
-        print(( "Error: {0}".format(err)))
-        return 1        # error
 
 def listbranch():
     """
@@ -1765,15 +1996,62 @@ def testGetSetUDF():
         print( sOutLine )
     return 0
 
+def testOlxAPI():
+    try:
+        olrFilePath = ARGVS.fi
+        """
+        if (not os.path.isfile(olrFilePath)):
+            Tkinter.Tk().withdraw() # Close the root window
+            opts = {}
+            opts['filetypes'] = [('ASPEN OneLiner file',('.olr'))]
+            opts['title'] = 'Open OneLiner Network'
+            olrFilePath = str(tkFileDialog.askopenfilename(**opts))
+        """
+        if not os.path.isfile(olrFilePath):
+            print("OLR file does not exit: ", olrFilePath)
+            return 1
+
+        if OLXAPI_FAILURE == OlxAPI.LoadDataFile(olrFilePath,1):
+            raise OlxAPI.OlxAPIException(OlxAPI.ErrorString())
+        print("File opened successfully: " + olrFilePath)
+
+        testGetSetSysParams()
+        #testOLGfxOp(olrFilePath)
+        #testSnapSPCData(olrFilePath)
+        #testGetObjGraphicData()
+        #testEliminateZZBranch()
+        #testGetSetUDF()
+        #testFindObjGUID()
+        #testFindObj1LPF()
+        #testDeleteEquipment(olrFilePath)
+        #testFindObj()
+        #testBoundaryEquivalent(olrFilePath)
+        #testDoBreakerRating()
+        #testGetData()
+        #testFaultSimulation()
+        #testGetSEADeviceOp()
+        #testOlxAPIComputeRelayTime()
+        #testOlxAPI.MakeOutageList()
+        #testOlxAPI.GetSetObjTagsMemo()
+        #testDoRelayCoordination()
+        #testCHECKRELAYOPERATIONSEA()
+        #testDIFFANDMERGE()
+        #testSaveDataFile(olrFilePath)
+        return 0
+
+    except  OlxAPI.OlxAPIException as err:
+        print(( "Error: {0}".format(err)))
+        return 1        # error
+
 def main(argv=None):
     #ARGVS.fi = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15\\Sample30.OLR'
     #
     # IMPORTANT: Successfull initialization is required before any
     #            other OlxAPI call can be executed.
     #
-    if ARGVS.fi == "":
-        print( "Input file is missing. Try samples.py -h" )
-        return 1
+    #if ARGVS.fi == "":
+    #    print( "Input file is missing. Try samples.py -h" )
+    #    return 1
     try:
         OlxAPI.InitOlxAPI(ARGVS.olxpath)
     except OlxAPI.OlxAPIException as err:
@@ -1781,13 +2059,14 @@ def main(argv=None):
         return 1        # error:
 
 
-    return testOlxAPI()
+    #return testAddEquipment("")
+    #return testOlxAPI()
     #return testGetDataMupair()
     #return listbranch()
     #return orphanbus()
     #return linez_v2()
     #return networkutil()
-    #return testExportNetwork()
+    return testExportNetwork()
     #testExportRelay()
 
 if __name__ == '__main__':

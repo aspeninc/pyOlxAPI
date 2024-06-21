@@ -2,31 +2,36 @@
 Purpose: PRC-023-4 Transmission Relay Loadability Check
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2022, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "2.1.1"
+__version__   = "1.2.7"
 
-
-# IMPORT -----------------------------------------------------------------------
-from OlxObj import *
-import AppUtils,Substation
-import os,csv,time,math
+import os,sys
+import csv,time,math
+import logging
+logger = logging.getLogger(__name__)
+#
 PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
-
-# INPUT Command Line Arguments
+# default olxpath/olxpathpy
+olxpath   = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15'
+olxpathpy = 'C:\\Program Files (x86)\\ASPEN\\1LPFv15\\OlxAPI\\Python'
 import argparse
 PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
 PARSER_INPUTS.usage = 'PRC-023-4 Transmission Relay Loadability Check'
+PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR file path', default = '',type=str,metavar='')
 PARSER_INPUTS.add_argument('-fCFG',help = '*(str) XML config file path (default=...\\PRC023_CONFIG.XML)',default = 'PRC023_CONFIG.XML',type=str, metavar='')
+PARSER_INPUTS.add_argument('-olxpath'   , help = ' (str) Full pathname of the folder, where the ASPEN olxapi.dll is located',default = olxpath,type=str,metavar='')
+PARSER_INPUTS.add_argument('-olxpathpy' , help = ' (str) Full pathname of the folder where the OlxAPI Python wrapper OlxAPI.py and relevant libraries are located,',default = olxpathpy,type=str,metavar='')
 PARSER_INPUTS.add_argument('-opath' , help = ' (str) Path name output folder',default = "", type=str, metavar='')
-PARSER_INPUTS.add_argument('-demo', help = ' (int) demo [0-ignore, 1-run demo]', default = 0,type=int,metavar='')
 ARGVS = PARSER_INPUTS.parse_known_args()[0]
-
-
+sys.path.insert(0,ARGVS.olxpathpy)
+import OlxObj
+import AppUtils
+import Substation
 #
 nprec = 2 # nRound in output
 ## value default, example for Line thermal rating Default = 'C', all acceptable value: ['A','B','C','D']
@@ -42,11 +47,11 @@ setLhandle = set()
 #
 def run1line(l1,config):
     global kr,setLhandle
-    if type(l1)!=TERMINAL:
+    if type(l1)!=OlxObj.TERMINAL:
         if l1.HANDLE in setLhandle:
             return dict()
     #
-    res = OLCase.tapLineTool(l1,tapSCAP=True)
+    res = OlxObj.OLCase.tapLineTool(l1,tapSCAP=True)
     mainLine = res['mainLine']
     allPath = res['allPath']
     remoteBus = res['remoteBus']
@@ -65,7 +70,7 @@ def run1line(l1,config):
     z1 = 0 # line inductive reactance
     haveSeriesrc = False
     for e1 in ea:
-        if type(e1)!=SWITCH:
+        if type(e1)!=OlxObj.SWITCH:
             x1 = e1.X
             if x1>0: # reduced by the capacitive reactance
                 z1+=x1
@@ -229,7 +234,7 @@ def run1line(l1,config):
     if len(ta)==2:
         for ti in ta:
             e1 = ti.EQUIPMENT
-            if type(e1) in {XFMR,XFMR3}:
+            if type(e1) in {OlxObj.XFMR,OlxObj.XFMR3}:
                 x = e1
     r110 = 'N/A'
     ad2.extend([[kr,'R1.10: Transformer Overcurrent Protection']])
@@ -260,8 +265,9 @@ def run1line(l1,config):
     # for the opposite
     t2 = mainLine[0][-1].OPPOSITE[0]
     #
-    return {'sum1':sum1,'details1':ad,'topposite':t2}
 
+
+    return {'sum1':sum1,'details1':ad,'topposite':t2}
 #
 def rate_generator(b1):
     """ Set transmission line relays applied at the load center terminal, remote from generation
@@ -269,8 +275,8 @@ def rate_generator(b1):
         to the generation source under any system configuration
         mvaMax = 2 * MVA rate
 
-        R1.6 - Generation Remote to Load
-        page 14-16/36 'pa_Stand_PRC0231RD_Relay_Loadability_Reference_Doc_Clean_Final_2008July3.pdf'
+        R1.6 — Generation Remote to Load
+            page 14-16/36 'pa_Stand_PRC0231RD_Relay_Loadability_Reference_Doc_Clean_Final_2008July3.pdf'
     """
     sub1 = Substation.substation(b1,leng=0.0)
     ga1 = sub1.GEN
@@ -279,7 +285,7 @@ def rate_generator(b1):
     #
     for t1 in sub1.TERMINAL_EXT:
         if t1.FLAG==1:#in service
-            res = OLCase.tapLineTool(t1,tapSCAP=True)
+            res = OlxObj.OLCase.tapLineTool(t1,tapSCAP=True)
             remoteBus = res['remoteBus']
             for b5 in remoteBus:
                 sub5 = Substation.substation(b5,leng=0.0)
@@ -308,30 +314,30 @@ def theoreticalPowerTransferCapability(ea,kV,b1,b3,z1,z10):
     For R1.5 page 13/36 'pa_Stand_PRC0231RD_Relay_Loadability_Reference_Doc_Clean_Final_2008July3.pdf'
     ic1, ic2: three-phase fault current at 2 ends of the line (remove the line under study)
     """
-    pmax10 = 1.0/z10 * OLCase.BASEMVA
-    pmax1 = 1.0/z1 * OLCase.BASEMVA
+    pmax10 = 1.0/z10 * OlxObj.OLCase.BASEMVA
+    pmax1 = 1.0/z1 * OlxObj.OLCase.BASEMVA
     # Remove the line or lines under study (parallel lines need to be removed prior to doing the fault study)
-    o1 = OUTAGE(option='ALL',G=0)
+    o1 = OlxObj.OUTAGE(option='ALL',G=0)
     for e1 in ea:
         if type(e1).__name__=='LINE':
             o1.add_outageLst(e1)
     if len(o1.outageLst)==0:
         o1=None
     #
-    fs1 = SPEC_FLT.Classical(obj=b1,fltApp='BUS',fltConn='3LG',Z=[0,0],outage=o1)
-    OLCase.simulateFault(fs1,1,verbose=False)
-    xS = FltSimResult[0].Thevenin[0].imag
+    fs1 = OlxObj.SPEC_FLT.Classical(obj=b1,fltApp='BUS',fltConn='3LG',Z=[0,0],outage=o1)
+    OlxObj.OLCase.simulateFault(fs1,1,verbose=False)
+    xS = OlxObj.FltSimResult[0].Thevenin[0].imag
     if abs(xS)>10000: # line end without gen, ic=0
         xS=1e9
     #
-    fs2 = SPEC_FLT.Classical(obj=b3,fltApp='BUS',fltConn='3LG',Z=[0,0],outage=o1)
-    OLCase.simulateFault(fs2,1,verbose=False)
-    xR = FltSimResult[0].Thevenin[0].imag
+    fs2 = OlxObj.SPEC_FLT.Classical(obj=b3,fltApp='BUS',fltConn='3LG',Z=[0,0],outage=o1)
+    OlxObj.OLCase.simulateFault(fs2,1,verbose=False)
+    xR = OlxObj.FltSimResult[0].Thevenin[0].imag
     if abs(xR)>10000: # line end without gen, i=0
         xR=1e9
     #
-    x1Ohm = z1 * kV*kV/OLCase.BASEMVA
-    x1Ohm0 = z10 * kV*kV/OLCase.BASEMVA
+    x1Ohm = z1 * kV*kV/OlxObj.OLCase.BASEMVA
+    x1Ohm0 = z10 * kV*kV/OlxObj.OLCase.BASEMVA
     #
     pmax20 = (1.05*kV)**2/(xS+xR+x1Ohm0)
     pmax2 = (1.05*kV)**2/(xS+xR+x1Ohm)
@@ -353,9 +359,9 @@ def weakSource(t1,e1):
         ti = ta[1]
     else:
         ti = ta[0]
-    fs = SPEC_FLT.Classical(obj=ti,fltApp='Line-end',fltConn='3LG',Z=[0,0])
-    OLCase.simulateFault(fs,1,verbose=False)
-    ic = abs(FltSimResult[0].current()[0])
+    fs = OlxObj.SPEC_FLT.Classical(obj=ti,fltApp='Line-end',fltConn='3LG',Z=[0,0])
+    OlxObj.OLCase.simulateFault(fs,1,verbose=False)
+    ic = abs(OlxObj.FltSimResult[0].current()[0])
     return ic,ti
 #
 def writeCSV(fn,ha,ar):
@@ -395,23 +401,30 @@ def readConfigFile(fCFG):
                 raise Exception(se)
     return config
 #
-def run():
-    OLCase.checkInit(PY_FILE) # check if ASPEN OLR file is opened
-
+def main():
+    AppUtils.logger2File(PY_FILE,version = __version__)
+    if not AppUtils.checkInputOLR(ARGVS.fi,PY_FILE,PARSER_INPUTS):
+        return False
+    #
+    ARGVS.fi = os.path.abspath(ARGVS.fi)
     ARGVS.fCFG = os.path.abspath(ARGVS.fCFG)
     #
     config = readConfigFile(ARGVS.fCFG)
+    ## load api
+    v = OlxObj.load_olxapi(ARGVS.olxpath)
+    ## open file
+    OlxObj.OLCase.open(ARGVS.fi,1)
     ## scope
     try:
-        OLCase.applyScope(areaNum = config['AREA'],zoneNum = config['ZONE'],kV =[200,1000],verbose=False)
+        OlxObj.OLCase.applyScope(areaNum = config['AREA'],zoneNum = config['ZONE'],kV =[200,1000],verbose=False)
     except Exception as err:
         raise Exception('\nInvalid data n config file: '+ARGVS.fCFG+str(err))
     #
-    la = OLCase.LINE
+    la = OlxObj.OLCase.LINE
     # for line 0-200kV with Tags=config['TAGS']
     if config['TAGS']:
-        OLCase.applyScope(areaNum = config['AREA'],zoneNum = config['ZONE'],kV =[0,200],verbose=False)       
-        ltags = OLCase.findOBJByTag(config['TAGS'],['LINE'])
+        OlxObj.OLCase.applyScope(areaNum = config['AREA'],zoneNum = config['ZONE'],kV =[0,200],verbose=False)
+        ltags = OlxObj.OLCase.findOBJByTag(config['TAGS'],['LINE'])
         la.extend(ltags)
     #
     ar0 = [] # summary
@@ -430,8 +443,9 @@ def run():
                 #break
     #
     header = [  ['PRC-023 FACILITY LOADABILITY LIMITS'],\
+        ['ASPEN OneLiner V%s Build:%s'%(v[0],v[1])],\
         ['Date',time.asctime()],\
-        ['OLR File',OLCase.olrFile],\
+        ['OLR File',ARGVS.fi],\
         ['Config File',(ARGVS.fCFG if os.path.isfile(ARGVS.fCFG) else 'None')],\
         ['CONFIGURATIONS:']]
     for k,v in config.items():
@@ -440,10 +454,10 @@ def run():
     header.append(['FACILITY','SUMMARY'])
     header.append(['NO','KV','BUSNO1','BUSNAME1','BUSNO2','BUSNAME2','CKTID','REMOTEBUSNO','REMOTEBUSNAME','R1.1','R1.2','R1.3','R1.4','R1.5','R1.6','R1.7','R1.8','R1.9','R1.10','R1.11','R1.12','R1.13'])
     #
-    opath = ARGVS.opath if ARGVS.opath else os.path.dirname(OLCase.olrFile)+'\\PRC023_Results'
+    opath = ARGVS.opath if ARGVS.opath else os.path.dirname(ARGVS.fi)+'\\PRC023_Results'
     #
-    fsum = opath+'\\PRC023_1Summary_'+os.path.basename(OLCase.olrFile)
-    fdet = opath+'\\PRC023_2Details_'+os.path.basename(OLCase.olrFile)
+    fsum = opath+'\\PRC023_1Summary_'+os.path.basename(ARGVS.fi)
+    fdet = opath+'\\PRC023_2Details_'+os.path.basename(ARGVS.fi)
     #
     fsum = AppUtils.get_file_out(fo=fsum , fi='' , subf='' , ad='', ext='.CSV')
     fdet = AppUtils.get_file_out(fo=fdet , fi='' , subf='' , ad='', ext='.CSV')
@@ -454,28 +468,11 @@ def run():
     #
     print('CSV summary report:',fsum)
     print('CSV details report:',fdet)
-
-
-def run_demo():
-    if ARGVS.demo==1:
-        fi = PATH_FILE+'\\PRC023.OLR'
-        OLCase.open(fi, 1)
-        sMain = "\nOLR file: " + fi
-        sMain+= "\n\nDo you want to run this demo (Y/N)?"
-        choice = AppUtils.gui_askquestion(PY_FILE+' Demo',sMain)
-        if choice=='YES':
-            return run()
-    else:
-        AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1])
-
-
-def main():
-    if ARGVS.demo>0:
-        return run_demo()
-    return run()
-
-
+#
 if __name__ == '__main__':
+    #ARGVS.fi = 'sample\\LS1.OLR'
+    #ARGVS.fi = 'sample\\PRC023.OLR'
     main()
+    logging.shutdown()
 
 

@@ -1,0 +1,23 @@
+Running log of pyOlxAPI developments and bug fixes
+
+Sript tested for shipCandidate 15.8
+    ArcFlashEx.py
+    busFlt_demo1.py
+    busFlt_demo2.py
+    XFMRConn.py
+    tielines.pyw
+    changebus.pyw
+    CheckNetwork.py
+    linez.py
+    lineterm.py
+	PRC023.py
+	fltDiffTool.pyw
+	
+
+2024.01.21
+- Build 36572 with bug fixes and new APIs: Locate1LObj() and BusPicker()
+
+Unknown date
+- The latest and greatest of OlxAPI.py v15.11.9, OlxObj.py v3.4.11
+- The latest of Oneline.exe and OlxAPI.dll V15.7 34489
+- Misc bug fixes in V2.5:

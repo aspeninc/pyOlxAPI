@@ -774,7 +774,7 @@ def FindOppositeBranch( NearEndBrHnd, OppositeBrList, TempBrList, TempListSize, 
                 continue
             if (nType == TC_SWITCH):
                 argsGetData = {}
-                argsGetData["hnd"] = nLindHnd
+                argsGetData["hnd"] = nLineHnd
                 argsGetData["token"] = SW_nInService
                 if (OLXAPI_OK == get_data(argsGetData)):
                     nStatus = argsGetData["data"]
@@ -1204,7 +1204,7 @@ def getOppositeBranch(hndBr,typeConsi): # all type of branch
     return bra
 #
 def linez(hnda):
-    """ Calcul total line impedance and length of multisectionLine
+    """ Compute total line impedance and length of multisectionLine
     Args:
         hnda: list handle of Line (must be TC_LINE,TC_SCAP,TC_SWITCH or TC_BRANCH on)
     return:
@@ -1362,7 +1362,7 @@ def findLineSections(hnd0,tapSCAP=False,prt=False):
             r1 = ri[:-1]
             ea = getEquipmentData(r1,BR_nHandle)
             ta = getEquipmentData(r1,BR_nType)
-            b1 = getEquipmentData(r1[len(r1)-1:],BR_nBus1Hnd)[0]
+            b1 = getEquipmentData(r1[len(r1)-1:],BR_nBus2Hnd)[0]
             nTap1 = getEquipmentData([b1],BUS_nTapBus)[0]
             ida1,naa1 = [],[] #get name and ID
             for i in range(len(ea)):
@@ -1620,14 +1620,15 @@ def lineComponents_0(hndBr,b2t,typeConsi,tapRecursive=True,tapSCAP=False): # Wit
                     resF.append(rf1)
                     break
     if tapSCAP and tapRecursive and len(resF)==1:
-        re = resF[0][len(resF[0])-1]
-        equiHnd0 = getEquipmentData([hndBr],BR_nHandle)[0]
-        resF.clear()
-        for rf1 in lineComponents_0(re,0,typeConsi,tapSCAP=tapSCAP,tapRecursive=False):
-            e1 = getEquipmentData(rf1,BR_nHandle)
-            for i in range(len(rf1)):
-                if e1[i]==equiHnd0:
-                    resF.append(rf1)
+        for i in range(2):
+            re = resF[0][len(resF[0])-1]
+            equiHnd0 = getEquipmentData([hndBr],BR_nHandle)[0]
+            resF.clear()
+            for rf1 in lineComponents_0(re,0,typeConsi,tapSCAP=tapSCAP,tapRecursive=False):
+                e1 = getEquipmentData(rf1,BR_nHandle)
+                for i in range(len(rf1)):
+                    if e1[i]==equiHnd0:
+                        resF.append(rf1)
     return resF
 #
 def isMainLine(hndLna):

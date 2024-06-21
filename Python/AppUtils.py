@@ -1,16 +1,16 @@
 ﻿"""
-Common utililities
+Common utilities
 """
 from __future__ import print_function
 
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "no"
 __email__     = "support@aspeninc.com"
 __status__    = "Realease"
-__version__   = "1.3.3"
+__version__   = "2.1.8"
 
 import logging
 import traceback
@@ -20,9 +20,8 @@ import time,csv
 import subprocess,threading
 import tempfile,random
 import string,math
-from ctypes import wintypes
-from ctypes import *
 from datetime import datetime
+
 #
 try: #python 3
     import winreg
@@ -37,6 +36,7 @@ except: #python 2
     import tkFileDialog as tkf
     import tkMessageBox as tkm
     import ttk
+
 #
 def iniInput(usage):
     import argparse
@@ -95,7 +95,7 @@ def getASPENFile(path,sfile):
 #
 def logger2File(PY_FILE,prt=True,flog='',version=''):
     if not flog.endswith('.log'):
-        flog = os.path.join(get_opath(""),PY_FILE)
+        flog = os.path.join(get_opath(""), os.path.split(os.path.abspath(PY_FILE))[1])
         flog = get_file_out(fo=flog , fi='' , subf='' , ad='' , ext='.log')
     flog = os.path.abspath(flog)
     #
@@ -126,13 +126,16 @@ def logger2File(PY_FILE,prt=True,flog='',version=''):
     return flog
 #
 def loggerOffStdout():
-    flog= logging.root.handlers[1].baseFilename
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    #
-    logging.basicConfig(level=logging.INFO,
-                        format='%(message)s', #%(levelname)s
-                        handlers=[logging.FileHandler(flog)])
+    try:
+        flog= logging.root.handlers[1].baseFilename
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+        #
+        logging.basicConfig(level=logging.INFO,
+                            format='%(message)s', #%(levelname)s
+                            handlers=[logging.FileHandler(flog)])
+    except:
+        pass
 #
 def get_String_random(k):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=k))
@@ -151,10 +154,11 @@ def get_tpath():
 def get_opath(opath):
     if opath =='':
         opath= os.path.join(tempfile.gettempdir(),'1LPF')
-    try:
-        os.mkdir(opath)
-    except:
-        pass
+    if not os.path.exists(opath):
+        try:
+            os.mkdir(opath)
+        except:
+            pass
     return opath
 #
 def get_file_out(fo,fi,subf,ad,ext):
@@ -169,6 +173,8 @@ def get_file_out(fo,fi,subf,ad,ext):
         check if can write in folder,
         if not=> create in tempo directory
     """
+    fo = correctNameFile(fo)
+    fi = correctNameFile(fi)
     if fo=='':
         fo1,ext1 = os.path.splitext(fi)
     else:
@@ -184,13 +190,19 @@ def get_file_out(fo,fi,subf,ad,ext):
         path = os.path.split(fi)[0]
         if path=='':
             path,sfile = os.path.split(os.path.abspath(fo1))
-    # test folder
-    if subf!='':
-        path = os.path.join(path,subf)
+    if not os.path.exists(path):
         try:
             os.mkdir(path)
         except:
             pass
+    # test folder
+    if subf!='':
+        path = os.path.join(path,subf)
+        if not os.path.exists(path):
+            try:
+                os.mkdir(path)
+            except:
+                pass
     #
     try:
         srandom = get_String_random(15)
@@ -202,23 +214,18 @@ def get_file_out(fo,fi,subf,ad,ext):
         path = get_opath('')
         if subf!='':
             path = os.path.join(path,subf)
-            try:
+            if not os.path.isdir(path):
                 os.mkdir(path)
-            except:
-                pass
     # test file
-    k = -1
-    while True:
-        k+=1
+    for k in range(1000):
+        if k==999:
+            raise Exception('Error in AppUtils.get_file_out(...)')
         if k>0:
-            # if k>100:
             ad1 = ad + '_'+str(k)
-            # else:
-            #     ad1 = ad+'_'+get_String_random(5)
         else:
             ad1 = ad
         #
-        fo = os.path.join(path,sfile + ad1+ ext)
+        fo = os.path.join(path,sfile + ad1 + ext)
         #
         deleteFile(fo)
         if not os.path.isfile(fo):
@@ -461,16 +468,24 @@ def checkFileSelected(sfile,mes):
     #
     if not os.path.isfile(sfile):
         raise Exception ('FileNotFoundError: '+sfile)
+
+
+def correctNameFile(fi):
+    res = str(fi).strip()
+    if (res.startswith('"') and res.endswith('"')) or (res.startswith("'") and res.endswith("'")):
+        res = res[1:-1]
+    return res
 #
 def checkFile(fi,exta,desc):
+    fi = correctNameFile(fi)
     if fi=='':
         return False,'\n'+ desc+' : None selected'
     if not os.path.isfile(fi):
-        return False,'\n'+ desc+' : File not found\n"%s"'% os.path.abspath(fi)
+        return False,'\n'+ desc+' : File not found\n"%s"'%fi
     #
     ext = (os.path.splitext(fi)[1]).upper()
     if ext not in exta:
-        return False,'\n'+desc+" : Error format " +str(exta) +'\n"%s"'%os.path.abspath(fi)
+        return False,'\n'+desc+" : Unsupported file format " +str(ext) +'\n"%s"'%os.path.abspath(fi)
     #
     return True,''
 #
@@ -482,7 +497,15 @@ def checkInputOLR(folr,pyFile,PARSER_INPUTS):
         else:
             raise Exception(s)
     return True
-
+#
+def checkInputFile(fi,pyFile,PARSER_INPUTS,ext,mes):
+    a,s = checkFile(fi,[ext],mes)
+    if not a:
+        if pyFile.upper().endswith('.PY'):
+            return FinishCheck(pyFile,s,PARSER_INPUTS)
+        else:
+            raise Exception(s)
+    return True
 #
 def checkInputPK(pk,sobj,pyFile,PARSER_INPUTS):
     if not pk:
@@ -525,13 +548,32 @@ def setIco(root,path,fileIco):
     fileIco = getASPENFile(path,fileIco)
     if fileIco!=None:
         root.wm_iconbitmap(fileIco)
-    else:
-        root.wm_iconbitmap('')
+    return fileIco
 #
-def setIco_1Liner(root):
-    setIco(root,"","1LINER.ico")
+def setIco_1Liner(root, png='1LinerPython.png'):
+    f1 = r'C:\Program Files (x86)\ASPEN\1LPFv15\OlxAPI\Python\%s'%png
+    if not os.path.isfile(f1):
+        f1 = os.path.dirname(sys.executable)+r'\OlxAPI\Python\%s'%png
+        if not os.path.isfile(f1):
+            f1 = os.path.dirname(sys.executable)+r'\%s'%png
+    try:
+        root.iconphoto(True, tk.PhotoImage(file = f1))
+        return
+    except:
+        pass
+    icon = setIco(root,r'C:\Program Files (x86)\ASPEN\1LPFv15\OlxAPI\Python',"1LINER.ico")
+    if icon==None:
+        icon = setIco(root,r'C:\Program Files (x86)\ASPEN\1LPFv15\OlxAPI\Python',"1LINER.ICO")
+    if icon==None:
+        icon = setIco(root,os.path.dirname(sys.executable),"1LINER.ico")
+    if icon==None:
+        icon = setIco(root,os.path.dirname(sys.executable),"1LINER.ICO")
+
 #
 def gui_info(sTitle,sMain):
+    if is_unittest():
+        return
+    print(sMain)
     root = tk.Tk()
     setIco_1Liner(root)
     #
@@ -539,19 +581,35 @@ def gui_info(sTitle,sMain):
     root.withdraw()
     tkm.showinfo(sTitle,sMain)
     root.destroy()
+
+def is_unittest():
+    cwd = os.getcwd()
+    if os.path.split(cwd)[1]=='ut' and sys.executable.endswith('python.exe') \
+        and os.path.isfile(cwd+'\\ut.py') and os.path.isfile(cwd+'\\ut_OlxObj.py')\
+        and os.path.isdir(cwd+'\\REF') and os.path.isdir(cwd+'\\REF2'):
+        return True
+    return False
 #
 def gui_askquestion(sTitle,sMain):
+    if is_unittest():
+        return 'YES'
     root = tk.Tk()
     setIco_1Liner(root)
     #
+    print(sMain)
     root.attributes('-topmost', True) # put in front of window
     root.withdraw()
     choice = tkm.askquestion(sTitle, sMain)
     root.destroy()
+    print(choice)
     #
-    return choice
+    return choice.upper()
 #
 def gui_error(sTitle,sMain):
+    if is_unittest():
+        return
+    #
+    print(sMain)
     root = tk.Tk()
     setIco_1Liner(root)
     #
@@ -572,7 +630,29 @@ def gui_saveAsExcelCSV():
         return ""
     except:
         tkm.showinfo("Permission denied", "Select file to save calculation results")
-        return saveAsExcelCSV()
+        return gui_saveAsExcelCSV()
+#
+def gui_saveAsExcel(title='Select Excel file to save calculation results'):
+    """
+    gui ask to save as Excel
+    """
+    root = tk.Tk()
+    setIco_1Liner(root)
+    #
+    root.attributes('-topmost', True) # put in front of window
+    root.withdraw()
+    #
+    files = [('Excel Workbook', '*.xlsx'),('All Files', '*.*')]
+    try:
+        v1 = tkf.asksaveasfile(title=title,defaultextension=".xlsx",filetypes=files)
+        if not (v1 is None):
+            root.destroy()
+            return str(v1.name)
+        root.destroy()
+        return ""
+    except:
+        tkm.showinfo("Permission denied", title)
+        return gui_saveAsExcel()
 #
 def deleteSpace1(s1):
     """
@@ -629,6 +709,7 @@ def remove_button(tk1):
     """
      remove python as Window
     """
+    from ctypes import wintypes,windll
     GWL_STYLE = -16
     WS_CHILD = 0x40000000
     WS_SYSMENU = 0x00080000
@@ -652,25 +733,58 @@ def remove_button(tk1):
     style = style & ~WS_SYSMENU
     res = tk1.SetWindowLong(hwnd, GWL_STYLE, style)
     res = tk1.SetWindowPos(hwnd, 0, 0,0,0,0, SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE)
+
+def hide_minimize_maximize(tk1):
+    #   shortcuts to the WinAPI functionality
+    from ctypes import windll
+    set_window_pos = windll.user32.SetWindowPos
+    set_window_long = windll.user32.SetWindowLongA
+    get_window_long = windll.user32.GetWindowLongA
+    get_parent = windll.user32.GetParent
+
+    #   some of the WinAPI flags
+    GWL_STYLE = -16
+
+    WS_MINIMIZEBOX = 131072
+    WS_MAXIMIZEBOX = 65536
+
+    SWP_NOZORDER = 4
+    SWP_NOMOVE = 2
+    SWP_NOSIZE = 1
+    SWP_FRAMECHANGED = 32
+
+
+    hwnd = get_parent(tk1.winfo_id())
+    #   getting the old style
+    old_style = get_window_long(hwnd, GWL_STYLE)
+    #   building the new style (old style AND NOT Maximize AND NOT Minimize)
+    new_style = old_style & ~ WS_MAXIMIZEBOX & ~ WS_MINIMIZEBOX
+    #   setting new style
+    set_window_long(hwnd, GWL_STYLE, new_style)
+    #   updating non-client area
+    set_window_pos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED)
+
 #
-def runSubprocess(args):
+def runSubprocess(args,cwd=''):
     """
     run a subprocess file with arg
     """
-    #
-    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if cwd:
+        proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=cwd)
+    else:
+        proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     outb, errb = proc.communicate()
     out = outb.decode('UTF-8','ignore')
     err = errb.decode('UTF-8','ignore')
     #
     return out,err,proc.returncode
 #
-def runSubprocess_withError(args):
+def runSubprocess_withError(args,cwd=''):
     """
     run a subprocess file with arg
       raise Exception if error
     """
-    out,err,returncode = runSubprocess(args)
+    out,err,returncode = runSubprocess(args,cwd)
     if returncode>0:
         raise Exception(err)
     return out,err,returncode
@@ -695,11 +809,11 @@ def getRootError(err):
 def FinishException(pyFile,err):
     if pyFile.upper().endswith('.PY'):
         try:
-            loggerOffStdout()
+            flog= logging.root.handlers[1].baseFilename
         except:
-            pass
+            flog = logger2File(pyFile,prt=False)
         logging.info('\n'+traceback.format_exc())
-        #print("\nlogFile : ",flog)
+        print('\nlogFile',flog)
         print('\nERROR: '+str(err))
         #
         logging.shutdown()
@@ -722,40 +836,59 @@ def runSubprocess_noWait(args):
     """
     return subprocess.call(args)
 #
-def runSubprocess_getHelp(pyFile):
+def runSubprocess_getHelp(pyFile, pythonPath='',cwd='',timeout=1):
     """
     get help of python (-h) by subprocess
     """
-    return runSubprocess_1w(pyFile,['-h'])
+    pathe = pythonPath if pythonPath else os.path.dirname(sys.executable)
+    args = [os.path.join(pathe,'pythonw.exe'),pyFile,'-h']
+    result = subprocess.run(args, cwd=cwd,timeout=timeout,capture_output=True)
+    out = result.stdout.decode('UTF-8','ignore')
+    err = result.stderr.decode('UTF-8','ignore')
+    #
+    return out,err,err!=''
 #
-def runSubprocess_1(pyFile,args):
+def runSubprocess_getHelp2(pyFile, pythonPath='',cwd='',timeout=1):
+    """
+    get help of python (-h) by subprocess
+    """
+    pathe = pythonPath if pythonPath else os.path.dirname(sys.executable)
+    args = [os.path.join(pathe,'pythonw.exe'),pyFile,'-h']
+    result = subprocess.run(args, cwd=cwd,timeout=timeout,capture_output=True)
+    out = result.stdout.decode('UTF-8','ignore')
+    err = result.stderr.decode('UTF-8','ignore')
+    #
+    return out,err,err!=''
+#
+def runSubprocess_1(pyFile,args, pythonPath=''):
     """
     run python by subprocess with args
     """
-    pathe = os.path.dirname(sys.executable)
+    pathe = pythonPath if pythonPath else os.path.dirname(sys.executable)
     ARGSR = [os.path.join(pathe,'python.exe'),pyFile]
     ARGSR.extend(args)
     #
     return runSubprocess(ARGSR)
 #
-def runSubprocess_1w(pyFile,args):
+def runSubprocess_1w(pyFile,args, pythonPath='',cwd=''):
     """
     run pythonw by subprocess with args
     """
-    pathe = os.path.dirname(sys.executable)
+    pathe = pythonPath if pythonPath else os.path.dirname(sys.executable)
     ARGSR = [os.path.join(pathe,'pythonw.exe'),pyFile]
     ARGSR.extend(args)
     #
-    return runSubprocess(ARGSR)
+    return runSubprocess(ARGSR,cwd)
 #
-def runSubprocess_1w_withError(pyFile,args):
+def runSubprocess_1w_withError(pyFile,args, pythonPath='',cwd=''):
     """
     run a subprocess file with arg pythonw.exe
       raise Exception if error
     """
-    out,err,returncode = runSubprocess_1w(pyFile,args)
+    out,err,returncode = runSubprocess_1w(pyFile,args, pythonPath=pythonPath,cwd=cwd)
     if returncode>0:
         raise Exception(err)
+
 #
 def launch_OneLiner(fo,olxpath=''):
     sf = getASPENFile(olxpath,"oneline.exe")
@@ -893,6 +1026,7 @@ class ToolCSVExcell:
 
     #
     def readFile(self,fi,delim):
+        fi = correctNameFile(fi)
         ck = checkFileType(fi=fi,ext=[".CSV",".XLSX",".XLSM"],err=True,sTitle0="Openning Excel/CSV file")
         #
         if ck==0:
@@ -902,6 +1036,7 @@ class ToolCSVExcell:
     #
     def readFile_csv(self,fi,delim):
         self.isExcel =  False
+        fi = correctNameFile(fi)
         #read file CSV
         checkFileType(fi=fi,ext=[".CSV"],err=True,sTitle0="Openning CSV file")
         #
@@ -912,18 +1047,25 @@ class ToolCSVExcell:
 
     # read file EXCEL
     def readFile_EXCEL(self,fi):
+        from openpyxl import load_workbook
+        fi = correctNameFile(fi)
         self.isExcel =  True
-        import openpyxl
         checkFileType(fi=fi,ext=['.XLSX','.XLS','.XLSM'],err=True,sTitle0="Openning Excel file")
         #
         self.fi = fi
         #
-        self.wb = openpyxl.load_workbook(fi)
+        self.wb = load_workbook(fi)
         self.ws = self.wb.active
         self.currentSheet = self.ws.title
         self.flag = 1
         self.allSheet = self.wb.sheetnames[:]
         return
+
+    def close(self):
+        try:
+            self.wb.close()
+        except:
+            pass
     #
     def getVal(self,row,column):
         if self.flag == 0: # CSV file
@@ -983,8 +1125,8 @@ class ToolCSVExcell:
         return res
     #
     def save2Excel(self,nameFileExcel,ares,nameSheet):
-        import openpyxl
-        wb = openpyxl.Workbook()
+        from openpyxl import Workbook
+        wb = Workbook()
         ws = wb.active
         try:
             ws.title = nameSheet[0]
@@ -1025,6 +1167,19 @@ class WIN_REGISTRY:
         #
         self.reg_key = winreg.OpenKey(self.Registry,path,0, winreg.KEY_SET_VALUE)
     #
+    def deleteInvalidFile(self): #delete invalid file in registry
+        va,i = [],0
+        while True:
+            try:
+                v1 = winreg.EnumValue(self.RawKey, i)
+                if not os.path.isfile(v1[1]):
+                    va.append(v1)
+            except:
+                break
+            i+=1
+        for v1 in va:
+            winreg.DeleteValue(self.reg_key, v1[0])
+    #
     def createKey(self,path):
         patha = str(path).split("\\")
         path1 = patha[0]
@@ -1045,7 +1200,14 @@ class WIN_REGISTRY:
             try:
                 a = winreg.EnumValue(self.RawKey, i)
                 name.append(a[0])
-                vala.append(a[1])
+                val1 = a[1]
+                try:
+                    val1 = val1.replace('\\','/')
+                    val1 = val1.replace('//','/')
+                    val1 = val1.replace('//','/')
+                except:
+                    pass
+                vala.append(val1)
             except:
                 break
             i+=1
@@ -1056,7 +1218,11 @@ class WIN_REGISTRY:
     #
     def getValue0(self):
         try:
-            return self.getAllNameValue()[1][0]
+            v,a = self.getAllNameValue()
+            for a1 in a:
+                if a1:
+                    return a1
+            return ""
         except:
             return ""
     #
@@ -1068,11 +1234,14 @@ class WIN_REGISTRY:
         for n1 in name:
             winreg.DeleteValue(self.reg_key, n1)
         #
-        r1 = [val]
+        val1 = val.replace('\\','/')
+        val1 = val1.replace('//','/')
+        val1 = val1.replace('//','/')
+        r1 = [val1]
         for ri in vala:
             if len(r1)>=self.nmax:
                 break
-            if ri!=val :
+            if ri!=val1 :
                 r1.append(ri)
         #
         for i in range(len(r1)):
@@ -1080,11 +1249,34 @@ class WIN_REGISTRY:
         #
         return True
     #
+    def updateValue(self,sf1,val):
+        try:
+            winreg.SetValueEx(self.reg_key, sf1, 0, winreg.REG_SZ, val)
+        except:
+            pass
+    #
+    def getValue(self,sf1,default=''):
+        name,vala = self.getAllNameValue()
+        for i in range(len(name)):
+            if name[i]==sf1:
+                return vala[i]
+        return default
+    #
     def deleteValue(self,val):
         name,vala = self.getAllNameValue()
         #
         for i in range(len(name)):
             if vala[i]==val:
+                winreg.DeleteValue(self.reg_key, name[i])
+    #
+    def deleteValueFile(self,val):
+        val1 = val.replace('\\','/')
+        val1 = val1.replace('//','/')
+        val1 = val1.replace('//','/').upper()
+        name,vala = self.getAllNameValue()
+        #
+        for i in range(len(name)):
+            if vala[i].upper()==val1:
                 winreg.DeleteValue(self.reg_key, name[i])
 #
 class Gui_Select(tk.Frame):
@@ -1219,16 +1411,24 @@ def ask_run_demo(PY_FILE,ut,fi,ad):
         sMain = "\nOLR file: " + fi + '\n'
     if ad:
         sMain +=  ad + '\n\n'
-    sMain += "Do you want to run this demo?"
+    sMain += "Do you want to run this demo (Y/N)?"
+    print( "\n" + sTitle )
+    choice = input( sMain )
+    if str(choice.upper()) == 'Y':
+        return 'yes'
+    else:
+        return 'cancel'
     #
-    choice = gui_askquestion(sTitle,sMain)
-    print(sTitle + sMain +": "+str(choice.upper()) +'\n')
-    return choice
+    #choice = gui_askquestion(sTitle,sMain)
+    #print(sTitle + sMain +": "+str(choice.upper()) +'\n')
+    #return str(choice.upper())
 #
-def demo_notFound(PY_FILE,val,val0):
-    sMain = "\nNot found "+os.path.splitext(PY_FILE)[0]+ " demo= "+ str(val)
-    sMain +="\ntry demo=" +str(val0)
+def demo_notFound(PY_FILE,val,val0,gui_err=0):
+    sMain = "\nUnsupported: "+os.path.splitext(PY_FILE)[0]+ " demo= "+ str(val)
+    sMain +="\nTry demo=" +str(val0)
     print(sMain)
+    if gui_err:
+        gui_error(PY_FILE,sMain)
 #
 def isFile(path,sfile):
     ffile = os.path.join(path,sfile)
@@ -1356,6 +1556,7 @@ def encodingFile(sFile):
 def isShipVersion():
     pe = os.path.basename(sys.executable)
     return (pe not in ['python.exe','pythonw.exe'])
+
 #
 def pauseFinal(verbose):
     if verbose>0 and isShipVersion():
@@ -1400,3 +1601,63 @@ def saveAsIgnoreAr(fi,fo,ar):
             f1.write(line)
     f0.close()
     f1.close()
+
+#
+def calOffsetMonitors(master):
+    #get_monitors:
+    from ctypes import windll,Structure,WINFUNCTYPE,c_long,c_int, c_ulong, POINTER, c_double
+    user = windll.user32
+    class RECT(Structure):
+        _fields_ = [('left', c_long), ('top', c_long), ('right', c_long),('bottom', c_long)]
+    monitors = []
+    CBFUNC = WINFUNCTYPE(c_int, c_ulong, c_ulong, POINTER(RECT), c_double)
+    def cb(hMonitor, hdcMonitor, lprcMonitor, dwData):
+        r = lprcMonitor.contents
+        data = [r.left, r.top, r.right, r.bottom]#[hMonitor]
+        monitors.append(data)
+        return 1
+    cbfunc = CBFUNC(cb)
+    temp = user.EnumDisplayMonitors(0, 0, cbfunc, 0)
+    #
+    sw = master.winfo_screenwidth()
+    sh = master.winfo_screenheight()
+    currentXY = master.winfo_pointerxy()
+    #
+    for m1 in monitors:
+        if (currentXY[0]>m1[0] and currentXY[0]<m1[2]) and (currentXY[1]>m1[1] and currentXY[1]<m1[3]):
+            return m1[0], m1[1],abs(m1[0]-m1[2]),abs(m1[1]-m1[3])
+    return 0,0,sw,sh
+#
+def setGeometry(master,szwindow):
+    offX,offY,sw,sh = calOffsetMonitors(master)
+    va = szwindow.split()
+    if len(va)==2: # '60 20'
+        x1 = float(va[0])/100
+        y1 = float(va[1])/100
+        x0 = 0.5-x1/2+offX/sw
+        y0 = 0.5-y1/2+offY/sh
+    else:#'20 60 15 60'
+        x0 = float(va[0])/100+offX/sw
+        x1 = float(va[1])/100
+        y0 = float(va[2])/100+offY/sh
+        y1 = float(va[3])/100
+    master.geometry("{0}x{1}+{2}+{3}".format(int(x1*sw),int(y1*sh),int(x0*sw),int(y0*sh)))
+#
+def isEmbedded():
+    return sys.executable.upper().endswith('ONELINE.EXE')
+
+
+def explorerDir(path, sMain='', title=''):
+    # open a folder on Windows Explorer
+    if is_unittest():
+        return
+    if sMain:
+        s1= sMain+"\n\nDo you want to open the folder in Windows Explorer (Y/N)?"
+        choice = gui_askquestion(title,s1)
+        if choice=='YES':
+            explorerDir(path)
+    else:
+        if os.path.isfile(path):
+            subprocess.run(['explorer', os.path.realpath(os.path.dirname(path))])
+        elif os.path.isdir(path):
+            subprocess.run(['explorer', os.path.realpath(path)])

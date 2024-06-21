@@ -8,7 +8,7 @@ __license__   = "All rights reserved"
 __category__  = "Common"
 __pyManager__ = "Yes"
 __email__     = "support@aspeninc.com"
-__status__    = "Release"
+__status__    = "Released"
 __version__   = "1.2.1"
 
 # IMPORT -----------------------------------------------------------------------

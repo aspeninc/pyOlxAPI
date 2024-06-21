@@ -2,86 +2,95 @@
 Purpose:  Run DoArcFlash (IEEE-1584 2018) with input data from a template file
 """
 __author__    = "ASPEN Inc."
-__copyright__ = "Copyright 2021, Advanced System for Power Engineering Inc."
+__copyright__ = "Copyright 2024, Advanced System for Power Engineering Inc."
 __license__   = "All rights reserved"
 __category__  = "OneLiner"
 __pyManager__ = "yes"
 __email__     = "support@aspeninc.com"
 __status__    = "Release"
-__version__   = "1.2.1"
+__version__   = "2.1.4"
 
-#
-import sys,os
-PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
-PATH_LIB = os.path.split(PATH_FILE)[0]
-if PATH_LIB not in sys.path:
-    os.environ['PATH'] = PATH_LIB + ";" + os.environ['PATH']
-    sys.path.insert(0, PATH_LIB)
-#
-import OlxAPI
-import OlxAPILib
-from OlxAPIConst import *
+
+# IMPORT -----------------------------------------------------------------------
+from OlxObj import *
 import AppUtils
+import os
+PATH_FILE,PY_FILE = os.path.split(os.path.abspath(__file__))
 
-# INPUTS cmdline ---------------------------------------------------------------
-PARSER_INPUTS = AppUtils.iniInput(usage=
-"\n\tRun DoArcFlash with input data from a template file\
-\n\tin CSV/Excel format with columns (fields) in following order:\
-\n\
-\nIEEE-1584 2018 Arc flash\
-\n  1.  'No.'                - Bus number  (optional)\
-\n  2.  'Bus Name'	         - bus name\
-\n  3.  'kV'	             - bus kv\
-\n  4.  'Electrode config'   - 0: VCB  1: VCBB  2: HCB  3: VOA  4: HOA\
-\n  5.  'Enclosure H (in.)'  - Applicable for electrode configs VCB, VCBB, HCB\
-\n  6.  'Enclosure W (in.)'  - Applicable for electrode configs VCB, VCBB, HCB\
-\n  7.  'Enclosure D (in.)'  - Applicable for electrode configs VCB, VCBB, HCB at voltage 600V or lower\
-\n  8.  'Conductor Gap (mm)'\
-\n  9.  'Working Distance (inches)'\
-\n  10. 'Breaker interrupting Time (cycles)'\
-\n  11. 'Fault Clearing'     - FUSE: Use fuse curve\
-\n                           - FIXED: Use fixed duration\
-\n                           - FASTEST: Use fastest trip time of device in vicinity\
-\n  12. 'Fault clearing option\
-\n                           - For clearing time option FASTEST: NO of tiers\
-\n                           - For clearing time option FIXED: Fixed delay\
-\n                           - For clearing Time Option FUSE: fuse LibraryName:CurveName")
+# INPUT Command Line Arguments
+import argparse
+PARSER_INPUTS = argparse.ArgumentParser(epilog= "")
+PARSER_INPUTS.usage =\
+    "\nRun DoArcFlash with input data from a template file\
+    \nin CSV/Excel format with columns (fields) in following order:\
+    \n\
+    \nIEEE-1584 2018 Arc flash\
+    \n  1.  'No.'                - Bus number  (optional)\
+    \n  2.  'Bus Name'             - bus name\
+    \n  3.  'kV'                 - bus kv\
+    \n  4.  'Electrode config'   - 0: VCB  1: VCBB  2: HCB  3: VOA  4: HOA\
+    \n  5.  'Enclosure H (in.)'  - Applicable for electrode configs VCB, VCBB, HCB\
+    \n  6.  'Enclosure W (in.)'  - Applicable for electrode configs VCB, VCBB, HCB\
+    \n  7.  'Enclosure D (in.)'  - Applicable for electrode configs VCB, VCBB, HCB at voltage 600V or lower\
+    \n  8.  'Conductor Gap (mm)'\
+    \n  9.  'Working Distance (inches)'\
+    \n  10. 'Breaker interrupting Time (cycles)'\
+    \n  11. 'Fault Clearing'     - FUSE: Use fuse curve\
+    \n                           - FIXED: Use fixed duration\
+    \n                           - FASTEST: Use fastest trip time of device in vicinity\
+    \n  12. 'Fault clearing option'\
+    \n                           - For clearing time option FASTEST: NO of tiers\
+    \n                           - For clearing time option FIXED: Fixed delay\
+    \n                           - For clearing Time Option FUSE: fuse LibraryName:CurveName"
 #
-ft_default = os.path.join(PATH_FILE,'InputTemplate2018.xlsx')
-if not os.path.isfile(ft_default):
-    ft_default= ''
+ft_default = PATH_FILE+'\\InputTemplate2018.csv'
 #
-PARSER_INPUTS.add_argument('-fi' , help = '*(str) OLR file path', default = '',type=str,metavar='')
-PARSER_INPUTS.add_argument('-ft' , help = '*(str) Input template file (CSV/Excel format)',default = ft_default,type=str,metavar='')
-PARSER_INPUTS.add_argument('-fo' , help = ' (str) Path name of the report file (CSV/Excel format)',default = '',type=str,metavar='')
-#
-ARGVS = AppUtils.parseInput(PARSER_INPUTS,demo=1)
+PARSER_INPUTS.add_argument('-ft' ,  help = '*(str) Input template file (CSV/Excel format)', default = ft_default, type=str, metavar='')
+PARSER_INPUTS.add_argument('-fo' ,  help = ' (str) Path name of the report file (CSV/Excel format)', default = '', type=str, metavar='')
+PARSER_INPUTS.add_argument('-demo', help = ' (int) demo [0-ignore, 1-run demo]', default = 0, type=int, metavar='')
+ARGVS = PARSER_INPUTS.parse_known_args()[0]
+import xml.etree.ElementTree as ET
 
-#
-def checkInput():
-    if not AppUtils.checkInputOLR(ARGVS.fi,PY_FILE,PARSER_INPUTS):
-        return False
+
+# CORE--------------------------------------------------------------------------
+def getStrBus(ws,i):
+    nBusNumber = int  (ws.getVal(row=i, column=1))
+    sBusName   = str  (ws.getVal(row=i, column=2))
+    dBusKv     = float(ws.getVal(row=i, column=3))
+
     #
-    a,s = AppUtils.checkFile(ARGVS.ft,[".XLSX",".XLS",".XLSM",".CSV"],'Input template file')
-    if not a:
-        return AppUtils.FinishCheck(PY_FILE,s,PARSER_INPUTS)
+    b1 = OLCase.findOBJ('BUS',[sBusName,dBusKv])
+    if b1==None and nBusNumber>0:
+        b1 = OLCase.findOBJ('BUS', nBusNumber)
     #
-    return True
-#
+    if b1==None:
+        sbus = "'%s',%f"%(sBusName,dBusKv)
+        print(sbus.ljust(25), ' : BUS NOT FOUND')
+        return ''
+    sbus = "'%s',%f"%(b1.NAME, b1.KV)
+    print(sbus.ljust(25), ' : BUS FOUND')
+    return sbus
+
+
 def run():
-    if not checkInput():
-        return
-    print("Template file: " +  ARGVS.ft )
+    OLCase.checkInit(PY_FILE) # check if ASPEN OLR file is opened
+
+    #
+    _, er = AppUtils.checkFile(ARGVS.ft,[".XLSX",".XLS",".XLSM",".CSV"],'Input template file')
+    if er:
+        PARSER_INPUTS.print_help()
+        AppUtils.gui_error('Arc-flash calculation', er)
+
+    print("Template file: ", ARGVS.ft)
     print("IEEE-1584 2018")
-    #
-    import xml.etree.ElementTree as ET
+
     # update file out
-    ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo , fi=ARGVS.fi , subf='' , ad='' , ext='.csv')
-    #
-    OlxAPILib.open_olrFile(ARGVS.fi,ARGVS.olxpath)
+    ARGVS.fo = AppUtils.get_file_out(fo=ARGVS.fo , fi=OLCase.olrFile , subf='' , ad='' , ext='.csv')
     #
     ws = AppUtils.ToolCSVExcell()
-    ws.readFile(fi=ARGVS.ft,delim=',')
+    ws.readFile(fi=ARGVS.ft, delim=',')
+    ws2 = AppUtils.ToolCSVExcell()
+    ws2.readFile(fi=ARGVS.ft, delim=',')
     #
     nSuccess = 0
     #
@@ -90,7 +99,7 @@ def run():
             break
         #
         sbus = getStrBus(ws,i)
-        if sbus !="":
+        if sbus:
             if str(ws.getVal(row=6, column=4)) =="Electrode config":     # standardYear = 2018
                 data = ET.Element('ARCFLASHCALCULATOR2018')
                 data.set('REPFILENAME',ARGVS.fo)  # fo
@@ -124,82 +133,43 @@ def run():
             #
             sInput = ET.tostring(data)
             #
-            if OlxAPILib.run1LPFCommand(sInput):
-                nSuccess += 1
+            OLCase.run1LPFCommand(sInput)
+            nSuccess += 1
     #
+    ws.close()
     if nSuccess>0:
-        print("\nArc-flash calculation ran successfully on " + str(nSuccess) + " buses")
-        print("Report file had been saved in:\n%s"%ARGVS.fo)
-
-        # open res in Excel
-        if ARGVS.ut ==0 :
-            AppUtils.launch_excel(ARGVS.fo)
+        sMain = "\nArc-flash calculation ran successfully on %i buses"%nSuccess
+        sMain+= "\n\nReport file had been saved in:\n%s"%ARGVS.fo
     else:
-        print("Something was not right (no bus found). No arc flash calculation results.")
-    return 1
+        sMain="Something was not right (no bus found).\nNo arc flash calculation results."
 
-#
-def getStrBus(ws,i):
-    nBusNumber = int  (ws.getVal(row=i, column=1))
-    sBusName   = str  (ws.getVal(row=i, column=2))
-    dBusKv     = float(ws.getVal(row=i, column=3))
-    sbus = "'"+ sBusName + "'," + str(round(dBusKv,3))
-    #
-    bhnd  = OlxAPI.FindBus(sBusName,dBusKv)
-    if bhnd>0:
-        print(sbus.ljust(25), ' : BUS FOUND')
-        return sbus
-    #
-    if nBusNumber>0:
-        bhnd = OlxAPI.FindBusNo(nBusNumber)
-    #
-    if bhnd<=0:
-        print(sbus.ljust(25), ' : BUS NOT FOUND')
-        return ''
-    #
-    name1 = OlxAPILib.getEquipmentData([bhnd],BUS_sName)[0]
-    kv1 = OlxAPILib.getEquipmentData([bhnd],BUS_dKVnominal)[0]
-    sbus = "'"+ name1 + "'," + str(round(kv1,3))
-    print(sbus.ljust(25), ' : BUS FOUND')
-    return sbus
-#
-def unit_test():
-    ARGVS.fi = os.path.join(PATH_FILE,'ARCFLASH.OLR')
-    run()
-    sres  = "OLR file: "+os.path.basename(ARGVS.fi) +"\n"
-    sres += "Template file: "+os.path.basename(ARGVS.ft) +"\n"
-    sres += AppUtils.read_File_text_2(ARGVS.fo,5)
-    #
-    AppUtils.deleteFile(ARGVS.fo)
-    return AppUtils.unit_test_compare(PATH_FILE,PY_FILE,sres)
+    AppUtils.explorerDir(ARGVS.fo, sMain, PY_FILE) #open dir of fo
 
-#
 def run_demo():
-    if ARGVS.demo ==1:
-        ARGVS.fi = AppUtils.getASPENFile(PATH_FILE,'SAMPLE30.OLR')
-        ARGVS.fo = AppUtils.get_file_out(fo='' , fi=ARGVS.fi , subf='' , ad='_'+os.path.splitext(PY_FILE)[0]+'_demo' , ext='.csv')
-        ARGVS.ft = os.path.join(PATH_FILE,'InputTemplate2018.xlsx')
+    if ARGVS.demo==1:
+        fi = AppUtils.getASPENFile(PATH_FILE,'SAMPLE30.OLR')
+        OLCase.open(fi,1)
+        ARGVS.fo = AppUtils.get_file_out(fo='' , fi=fi , subf='' , ad='_'+os.path.splitext(PY_FILE)[0]+'_demo' , ext='.csv')
+        ARGVS.ft = ft_default
         #
-        choice = AppUtils.ask_run_demo(PY_FILE,ARGVS.ut,ARGVS.fi,"Input template file: " + ARGVS.ft)
-        #
-        if choice=="yes":
+        sMain = "\nOLR file: " + fi
+        sMain+= "\n\nInput template file: " + ARGVS.ft
+        sMain+= "\n\nDo you want to run this demo (Y/N)?"
+        choice = AppUtils.gui_askquestion(PY_FILE+' Demo',sMain)
+        if choice=='YES':
             return run()
     else:
-        AppUtils.demo_notFound(PY_FILE,ARGVS.demo,[1])
-#
+        AppUtils.demo_notFound(PY_FILE, ARGVS.demo, [1],gui_err=1)
+
+
 def main():
-    if ARGVS.ut >0:
-        return unit_test()
     if ARGVS.demo>0:
         return run_demo()
     run()
-#
+
+
 if __name__ == '__main__':
-    # ARGVS.ut = 1
-    # ARGVS.demo = 1
-    try:
-        main()
-    except Exception as err:
-        AppUtils.FinishException(PY_FILE,err)
+    main()
+
 
 
